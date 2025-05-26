@@ -52,11 +52,16 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+// 上传基因文件
 void MainWindow::on_pushButton_clicked()
 {
-    QMessageBox msgBox(QMessageBox::Information, tr("提示信息"), tr("更新成功"), QMessageBox::Ok, this);
-    msgBox.setMinimumSize(300, 150);
-    msgBox.exec();
+    uploadFiles("MMNET/data/gene", "基因");
+}
+
+// 上传表型文件  
+void MainWindow::on_pushButton_2_clicked()
+{
+    uploadFiles("MMNET/data/phen", "表型");
 }
 
 // 第二步训练模型
@@ -328,6 +333,109 @@ void MainWindow::updateProgressFromLog() {
         qDebug() << "[MainWindow] Real-time progress from log:" << percent << "%, epoch:" << curEpoch;
         ui->progressBar_step2->setValue(percent);
     }
+}
+
+// 文件上传功能实现
+void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) {
+    // 创建目标目录（如果不存在）
+    QDir dir;
+    QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
+    if (!dir.exists(fullTargetPath)) {
+        if (!dir.mkpath(fullTargetPath)) {
+            MyMessageBox msgBox(this);
+            msgBox.setMySize(300, 150);
+            msgBox.setIcon(QMessageBox::Warning);
+            msgBox.setWindowTitle(tr("错误"));
+            msgBox.setText(tr("无法创建目标目录：") + fullTargetPath);
+            msgBox.setStandardButtons(QMessageBox::Ok);
+            msgBox.exec();
+            return;
+        }
+    }
+    
+    // 打开文件选择对话框
+    QStringList fileNames = QFileDialog::getOpenFileNames(
+        this,
+        tr("选择") + fileType + tr("文件"),
+        QDir::homePath(),
+        tr("支持的文件格式 (*.csv *.pt *.xls *.xlsx);;CSV文件 (*.csv);;PyTorch文件 (*.pt);;Excel文件 (*.xls *.xlsx);;所有文件 (*.*)")
+    );
+    
+    if (fileNames.isEmpty()) {
+        return; // 用户取消了选择
+    }
+    
+    // 验证文件格式并复制文件
+    QStringList successFiles;
+    QStringList failedFiles;
+    
+    for (const QString &fileName : fileNames) {
+        QFileInfo fileInfo(fileName);
+        
+        // 验证文件格式
+        if (!isValidFileFormat(fileInfo.fileName())) {
+            failedFiles.append(fileInfo.fileName() + tr(" (不支持的格式)"));
+            continue;
+        }
+        
+        // 复制文件到目标目录
+        QString targetFilePath = fullTargetPath + "/" + fileInfo.fileName();
+        
+        // 如果目标文件已存在，询问是否覆盖
+        if (QFile::exists(targetFilePath)) {
+            QMessageBox::StandardButton reply = QMessageBox::question(
+                this,
+                tr("文件已存在"),
+                tr("文件 ") + fileInfo.fileName() + tr(" 已存在，是否覆盖？"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No
+            );
+            
+            if (reply == QMessageBox::No) {
+                failedFiles.append(fileInfo.fileName() + tr(" (用户取消覆盖)"));
+                continue;
+            }
+            
+            // 删除现有文件
+            QFile::remove(targetFilePath);
+        }
+        
+        // 复制文件
+        if (QFile::copy(fileName, targetFilePath)) {
+            successFiles.append(fileInfo.fileName());
+        } else {
+            failedFiles.append(fileInfo.fileName() + tr(" (复制失败)"));
+        }
+    }
+    
+    // 显示结果
+    QString resultMsg;
+    if (!successFiles.isEmpty()) {
+        resultMsg += tr("成功上传 ") + QString::number(successFiles.size()) + tr(" 个") + fileType + tr("文件：\n");
+        resultMsg += successFiles.join("\n") + "\n\n";
+    }
+    
+    if (!failedFiles.isEmpty()) {
+        resultMsg += tr("失败 ") + QString::number(failedFiles.size()) + tr(" 个文件：\n");
+        resultMsg += failedFiles.join("\n");
+    }
+    
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(400, 200);
+    msgBox.setIcon(failedFiles.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setWindowTitle(tr("上传结果"));
+    msgBox.setText(resultMsg);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+}
+
+// 验证文件格式
+bool MainWindow::isValidFileFormat(const QString &fileName) {
+    QFileInfo fileInfo(fileName);
+    QString suffix = fileInfo.suffix().toLower();
+    
+    QStringList validFormats = {"csv", "pt", "xls", "xlsx"};
+    return validFormats.contains(suffix);
 }
 
 

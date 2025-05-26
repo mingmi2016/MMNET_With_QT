@@ -5,6 +5,9 @@
 #include <QThread>
 #include <QDateTime>
 #include <QTimer>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QDir>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -24,7 +27,8 @@ public:
     void changeProgress(int value); // 参考示例：用于更新进度条
 
 private slots:
-    void on_pushButton_clicked();
+    void on_pushButton_clicked();    // 上传基因文件
+    void on_pushButton_2_clicked();  // 上传表型文件
     void on_pushButton_3_clicked();
     void on_pushButton_4_clicked();
     void updateStep2Progress(int percent);
@@ -49,5 +53,9 @@ private:
     void startProgressMonitoring(const QString &logPath, int totalEpoch);
     void stopProgressMonitoring();
     int parseEpochFromLog(const QString &logPath);
+    
+    // 文件上传相关方法
+    void uploadFiles(const QString &targetDir, const QString &fileType);
+    bool isValidFileFormat(const QString &fileName);
 };
 #endif // MAINWINDOW_H
