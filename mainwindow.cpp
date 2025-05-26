@@ -121,12 +121,10 @@ void MainWindow::on_pushButton_3_clicked()
     worker->moveToThread(workerThread);
     connect(workerThread, &QThread::started, worker, &Worker::run);
     
-    // 连接进度信号
-    bool progressConnected = connect(worker, &Worker::progress, this, &MainWindow::updateStep2Progress, Qt::QueuedConnection);
+    // 只连接finished信号，progress信号由Worker内部处理
     bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
     
     qDebug() << "About to start worker thread...";
-    qDebug() << "Progress signal connected:" << progressConnected;
     qDebug() << "Finished signal connected:" << finishedConnected;
     
     connect(worker, &Worker::finished, workerThread, &QThread::quit);

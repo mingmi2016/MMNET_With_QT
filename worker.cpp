@@ -12,8 +12,9 @@
 #include <QDebug>
 #include <QThread>
 
-Worker::Worker(QObject *parent) : QObject(parent) {
-    // 直接发射信号给MainWindow，不需要内部信号槽连接
+Worker::Worker(QObject *parent) : QObject(parent), main_window(nullptr), current_progress(0) {
+    // 按照参考代码模式：连接内部信号到内部槽
+    connect(this, SIGNAL(sendProgressSignal()), this, SLOT(updateProgress()));
 }
 
 void Worker::setParams(const QString &exe1, const QString &exe2, const QString &log1, const QString &log2, const QString &json1, const QString &json2, const QString &pheno) {
@@ -27,7 +28,14 @@ void Worker::setParams(const QString &exe1, const QString &exe2, const QString &
 }
 
 void Worker::setMainWindow(MainWindow *mainWin) {
-    // 不再需要mainWindow指针，使用信号槽机制
+    main_window = mainWin;
+}
+
+void Worker::updateProgress() {
+    // 按照参考代码模式：直接调用主窗口的方法更新进度
+    if (main_window) {
+        main_window->changeProgress(current_progress);
+    }
 }
 
 void Worker::run() {
@@ -116,12 +124,14 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
             lastEpoch = curEpoch;
             int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / totalEpoch));
             qDebug() << "[Worker] emit progress:" << percent;
-            emit progress(percent);
+            current_progress = percent;
+            emit sendProgressSignal();
         }
     }
     
     // 确保最终进度
-    emit progress(100);
+    current_progress = 100;
+    emit sendProgressSignal();
     
     qDebug() << "[Worker] Process finished, exitCode:" << process.exitCode() << ", exitStatus:" << process.exitStatus();
     

@@ -22,13 +22,16 @@ public:
     
 public slots:
     void run();
+    void updateProgress(); // 内部槽函数，用于更新进度
     
 signals:
-    void progress(int percent); // 直接发射给MainWindow的进度信号
+    void sendProgressSignal(); // 内部信号
     void finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds);
     
 private:
     QString exePath1, exePath2, logPath1, logPath2, jsonPath1, jsonPath2, phenotype;
+    MainWindow *main_window; // 主窗口指针
+    int current_progress; // 当前进度值
     
     StepResult runStep(const QString &exe, const QString &log, const QString &json, const QString &pheno, bool isStep1);
     int parseEpoch(const QString &log);
