@@ -15,6 +15,8 @@
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include "worker.h"
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 
 // 统计目录大小递归函数
 static double dirSizeMB(const QString &path) {
@@ -42,6 +44,13 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化进度监控定时器
     progressTimer = new QTimer(this);
     connect(progressTimer, &QTimer::timeout, this, &MainWindow::updateProgressFromLog);
+    // 初始化phenotype单选组
+    phenotypeGroup = new QButtonGroup(this);
+    phenotypeGroup->setExclusive(true);
+    connect(phenotypeGroup, SIGNAL(buttonClicked(int)), this, SLOT(onPhenotypeSelected()));
+    refreshPhenotypeOptions();
+    // 默认禁用下载结果按钮
+    ui->pushButton_download_pred->setEnabled(false);
 }
 
 MainWindow::~MainWindow()
@@ -62,11 +71,22 @@ void MainWindow::on_pushButton_clicked()
 void MainWindow::on_pushButton_2_clicked()
 {
     uploadFiles("MMNET/data/phen", "表型");
+    refreshPhenotypeOptions();
+}
+
+// 上传待预测文件
+void MainWindow::on_pushButton_5_clicked()
+{
+    uploadFiles("MMNET/data/pred", "待预测");
 }
 
 // 第二步训练模型
 void MainWindow::on_pushButton_3_clicked()
 {
+    if (selectedPhenotype.isEmpty()) {
+        QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
+        return;
+    }
     // 创建空的日志文件
     QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
     QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
@@ -111,7 +131,7 @@ void MainWindow::on_pushButton_3_clicked()
     QString log2 = QDir::currentPath() + "/MMNET/step2.log";
     QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
     QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
-    QString phenotype = "culmlength";
+    QString phenotype = selectedPhenotype;
     
     if (workerThread) { 
         workerThread->quit(); 
@@ -234,6 +254,19 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
 
 void MainWindow::on_pushButton_4_clicked()
 {
+    if (selectedPhenotype.isEmpty()) {
+        QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
+        return;
+    }
+    // 检查是否有待预测文件
+    QString predDir = QDir::currentPath() + "/MMNET/data/pred";
+    QDir dir(predDir);
+    QStringList filters = {selectedPhenotype + ".csv", selectedPhenotype + ".pt", selectedPhenotype + ".xls", selectedPhenotype + ".xlsx"};
+    QStringList found = dir.entryList(filters, QDir::Files);
+    if (found.isEmpty()) {
+        QMessageBox::warning(this, tr("错误"), tr("请先上传待预测文件（文件名需与表型一致）！"));
+        return;
+    }
     // 防止重复触发
     if (!ui->pushButton_4->isEnabled()) return;
     
@@ -243,7 +276,7 @@ void MainWindow::on_pushButton_4_clicked()
     ui->pushButton_4->repaint();
     
     // 运行 pred.exe
-    QString exePath = QDir::currentPath() + "/build/MMNET/pred.exe";
+    QString exePath = QDir::currentPath() + "/MMNET/pred.exe";
     if (!QFile::exists(exePath)) {
         MyMessageBox msgBox(this);
         msgBox.setMySize(300, 150);
@@ -258,7 +291,7 @@ void MainWindow::on_pushButton_4_clicked()
     }
 
     QProcess *process = new QProcess(this);
-    process->setWorkingDirectory(QDir::currentPath() + "/build/MMNET");
+    process->setWorkingDirectory(QDir::currentPath() + "/MMNET");
     process->start(exePath);
     process->waitForFinished(-1);
 
@@ -287,6 +320,8 @@ void MainWindow::on_pushButton_4_clicked()
     ui->pushButton_4->setText(oldText);
     ui->pushButton_4->setEnabled(true);
     process->deleteLater();
+    // 预测成功后启用下载按钮
+    ui->pushButton_download_pred->setEnabled(true);
 }
 
 void MainWindow::updatePredictStatus(const QString &msg) {
@@ -436,6 +471,77 @@ bool MainWindow::isValidFileFormat(const QString &fileName) {
     
     QStringList validFormats = {"csv", "pt", "xls", "xlsx"};
     return validFormats.contains(suffix);
+}
+
+void MainWindow::refreshPhenotypeOptions() {
+    // 清空旧的
+    QLayout *layout = ui->groupBox_step2->layout();
+    if (!layout) return;
+    // 查找并移除旧的单选按钮
+    QList<QRadioButton*> oldRadios = ui->groupBox_step2->findChildren<QRadioButton*>();
+    for (QRadioButton *btn : oldRadios) {
+        phenotypeGroup->removeButton(btn);
+        layout->removeWidget(btn);
+        btn->deleteLater();
+    }
+    // 遍历MMNET/data/phen目录
+    QString phenDir = QDir::currentPath() + "/MMNET/data/phen";
+    QDir dir(phenDir);
+    QStringList filters;
+    filters << "*.csv" << "*.pt" << "*.xls" << "*.xlsx";
+    QFileInfoList fileList = dir.entryInfoList(filters, QDir::Files | QDir::NoDotAndDotDot);
+    int idx = 0;
+    QHBoxLayout *radioLayout = new QHBoxLayout();
+    selectedPhenotype.clear();
+    for (const QFileInfo &info : fileList) {
+        QString baseName = info.completeBaseName();
+        QRadioButton *radio = new QRadioButton(baseName, ui->groupBox_step2);
+        phenotypeGroup->addButton(radio, idx++);
+        radioLayout->addWidget(radio);
+        if (selectedPhenotype.isEmpty()) {
+            radio->setChecked(true);
+            selectedPhenotype = baseName;
+        }
+    }
+    // 插入到Run Model按钮上方
+    QVBoxLayout *vLayout = qobject_cast<QVBoxLayout*>(ui->groupBox_step2->layout());
+    if (vLayout) {
+        vLayout->insertLayout(0, radioLayout);
+    }
+    // 启用/禁用Run Model按钮
+    if (fileList.isEmpty()) {
+        ui->pushButton_3->setEnabled(false);
+    } else {
+        ui->pushButton_3->setEnabled(true);
+    }
+}
+
+void MainWindow::onPhenotypeSelected() {
+    QAbstractButton *btn = phenotypeGroup->checkedButton();
+    if (btn) {
+        selectedPhenotype = btn->text();
+        ui->pushButton_3->setEnabled(true);
+    } else {
+        selectedPhenotype.clear();
+        ui->pushButton_3->setEnabled(false);
+    }
+}
+
+void MainWindow::on_pushButton_download_pred_clicked()
+{
+    QString srcFile = QDir::currentPath() + "/MMNET/MMNet_pred.csv";
+    if (!QFile::exists(srcFile)) {
+        QMessageBox::warning(this, tr("错误"), tr("未找到结果文件 MMNet_pred.csv，请先完成预测！"));
+        return;
+    }
+    QString savePath = QFileDialog::getSaveFileName(this, tr("保存结果文件"), QDir::homePath() + "/MMNet_pred.csv", tr("CSV文件 (*.csv);;所有文件 (*.*)"));
+    if (savePath.isEmpty()) return;
+    if (QFile::exists(savePath)) QFile::remove(savePath);
+    if (QFile::copy(srcFile, savePath)) {
+        QMessageBox::information(this, tr("成功"), tr("结果文件已保存到：\n") + savePath);
+    } else {
+        QMessageBox::warning(this, tr("错误"), tr("保存失败，请检查目标路径权限！"));
+    }
 }
 
 

@@ -66,6 +66,22 @@
          </property>
         </widget>
        </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_5">
+         <property name="minimumSize">
+          <size>
+           <width>160</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string>QPushButton{background-color:#f7b32b;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#e09e1b;}</string>
+         </property>
+         <property name="text">
+          <string>上传待预测文件</string>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
@@ -143,7 +159,25 @@
             <string>QPushButton{background-color:#f7b32b;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#e09e1b;}</string>
            </property>
            <property name="text">
-            <string>上传待预测文件</string>
+            <string>开始预测</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_download_pred">
+           <property name="minimumSize">
+            <size>
+             <width>160</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string>QPushButton{background-color:#43b97f;color:white;font-size:16px;border-radius:8px;}
+QPushButton:hover{background-color:#2e8b57;}
+QPushButton:disabled{background-color:#cccccc;color:#888888;border:1px solid #bbbbbb;}</string>
+           </property>
+           <property name="text">
+            <string>下载结果文件</string>
            </property>
           </widget>
          </item>

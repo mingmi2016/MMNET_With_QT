@@ -8,6 +8,8 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDir>
+#include <QButtonGroup>
+#include <QRadioButton>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -29,14 +31,17 @@ public:
 private slots:
     void on_pushButton_clicked();    // 上传基因文件
     void on_pushButton_2_clicked();  // 上传表型文件
+    void on_pushButton_5_clicked();  // 上传待预测文件
     void on_pushButton_3_clicked();
     void on_pushButton_4_clicked();
+    void on_pushButton_download_pred_clicked();
     void updateStep2Progress(int percent);
     void step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds,
                       const QDateTime &step1Start, const QDateTime &step1End, 
                       const QDateTime &step2Start, const QDateTime &step2End);
     void updatePredictStatus(const QString &msg);
     void updateProgressFromLog();
+    void onPhenotypeSelected();
 
 private:
     Ui::MainWindow *ui;
@@ -57,5 +62,10 @@ private:
     // 文件上传相关方法
     void uploadFiles(const QString &targetDir, const QString &fileType);
     bool isValidFileFormat(const QString &fileName);
+
+    // phenotype单选组相关
+    QButtonGroup *phenotypeGroup = nullptr;
+    QString selectedPhenotype;
+    void refreshPhenotypeOptions();
 };
 #endif // MAINWINDOW_H
