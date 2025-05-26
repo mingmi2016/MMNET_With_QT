@@ -3,10 +3,13 @@
 
 #include <QObject>
 #include <QString>
+#include <QDateTime>
 
 struct StepResult {
     bool ok;
     double seconds;
+    QDateTime startTime;
+    QDateTime endTime;
 };
 
 class MainWindow; // 前向声明
@@ -26,7 +29,9 @@ public slots:
     
 signals:
     void sendProgressSignal(); // 内部信号
-    void finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds);
+    void finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds, 
+                 const QDateTime &step1Start, const QDateTime &step1End, 
+                 const QDateTime &step2Start, const QDateTime &step2End);
     
 private:
     QString exePath1, exePath2, logPath1, logPath2, jsonPath1, jsonPath2, phenotype;
@@ -35,6 +40,7 @@ private:
     
     StepResult runStep(const QString &exe, const QString &log, const QString &json, const QString &pheno, bool isStep1);
     int parseEpoch(const QString &log);
+    int calculateOverallProgress(int stepProgress, bool isStep1); // 计算整体进度
 };
 
 #endif // WORKER_H 

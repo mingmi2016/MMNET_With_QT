@@ -38,6 +38,16 @@ void Worker::updateProgress() {
     }
 }
 
+int Worker::calculateOverallProgress(int stepProgress, bool isStep1) {
+    if (isStep1) {
+        // 第一步：0-50%
+        return stepProgress / 2;
+    } else {
+        // 第二步：50-100%
+        return 50 + stepProgress / 2;
+    }
+}
+
 void Worker::run() {
     qDebug() << "[Worker] ===== Worker::run() called! =====";
     qDebug() << "[Worker] Start run: " << exePath1 << exePath2;
@@ -47,38 +57,43 @@ void Worker::run() {
     qDebug() << "[Worker] exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
     qDebug() << "[Worker] exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
     
-    // 第一步：generate_genetic_relatedness.exe
+    // 第一步：generate_genetic_relatedness.exe (0-50%)
     qDebug() << "[Worker] ===== Starting Step 1 =====";
     StepResult r1 = runStep(exePath1, logPath1, jsonPath1, phenotype, true);
     qDebug() << "[Worker] runStep1 finished, ok=" << r1.ok << ", seconds=" << r1.seconds;
     if (!r1.ok) { 
         qDebug() << "[Worker] Step 1 failed, stopping execution";
         qDebug() << "[Worker] Step 1 failure details - check the logs above for process output and errors";
-        emit finished(false, "generate_genetic_relatedness.exe 运行失败！", r1.seconds, r1.seconds, 0.0); 
+        emit finished(false, "generate_genetic_relatedness.exe 运行失败！", r1.seconds, r1.seconds, 0.0,
+                     r1.startTime, r1.endTime, QDateTime(), QDateTime()); 
         return; 
     } else {
         qDebug() << "[Worker] Step 1 completed successfully, proceeding to Step 2";
     }
     
-    // 第二步：train_mmnet.exe
+    // 第二步：train_mmnet.exe (50-100%)
     qDebug() << "[Worker] ===== Starting Step 2 =====";
     StepResult r2 = runStep(exePath2, logPath2, jsonPath2, phenotype, false);
     qDebug() << "[Worker] runStep2 finished, ok=" << r2.ok << ", seconds=" << r2.seconds;
     double totalSeconds = r1.seconds + r2.seconds;
     if (!r2.ok) { 
         qDebug() << "[Worker] Step 2 failed";
-        emit finished(false, "train_mmnet.exe 运行失败！", totalSeconds, r1.seconds, r2.seconds); 
+        emit finished(false, "train_mmnet.exe 运行失败！", totalSeconds, r1.seconds, r2.seconds,
+                     r1.startTime, r1.endTime, r2.startTime, r2.endTime); 
         return; 
     }
     
     qDebug() << "[Worker] Both steps completed successfully";
-    emit finished(true, "模型训练已完成！", totalSeconds, r1.seconds, r2.seconds);
+    emit finished(true, "模型训练已完成！", totalSeconds, r1.seconds, r2.seconds,
+                 r1.startTime, r1.endTime, r2.startTime, r2.endTime);
 }
 
 StepResult Worker::runStep(const QString &exe, const QString &log, const QString &json, const QString &pheno, bool isStep1) {
     QElapsedTimer timer;
     timer.start();
+    QDateTime startTime = QDateTime::currentDateTime();
     qDebug() << "[Worker] runStep:" << exe << log << json << pheno;
+    qDebug() << "[Worker] Start time:" << startTime.toString("yyyy-MM-dd hh:mm:ss");
     
     // 读取配置获取总epoch数
     QFile jsonFile(json);
@@ -117,23 +132,28 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
     
     // 简化的监控循环，按照参考代码模式
     int lastEpoch = -1;
+    qDebug() << "[Worker] Starting monitoring loop for log:" << log << ", isStep1:" << isStep1;
     while (!process.waitForFinished(500)) {
         int curEpoch = parseEpoch(log);
-        qDebug() << "[Worker] parseEpoch returned:" << curEpoch;
+        qDebug() << "[Worker] parseEpoch returned:" << curEpoch << "for log:" << log;
         if (curEpoch > lastEpoch) {
             lastEpoch = curEpoch;
             int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / totalEpoch));
-            qDebug() << "[Worker] emit progress:" << percent;
-            current_progress = percent;
+            qDebug() << "[Worker] Step progress:" << percent << "%, isStep1:" << isStep1;
+            current_progress = calculateOverallProgress(percent, isStep1);
+            qDebug() << "[Worker] Overall progress:" << current_progress << "%";
             emit sendProgressSignal();
         }
     }
     
     // 确保最终进度
-    current_progress = 100;
+    current_progress = calculateOverallProgress(100, isStep1);
+    qDebug() << "[Worker] Final progress for step (isStep1=" << isStep1 << "):" << current_progress << "%";
     emit sendProgressSignal();
     
+    QDateTime endTime = QDateTime::currentDateTime();
     qDebug() << "[Worker] Process finished, exitCode:" << process.exitCode() << ", exitStatus:" << process.exitStatus();
+    qDebug() << "[Worker] End time:" << endTime.toString("yyyy-MM-dd hh:mm:ss");
     
     // 捕获进程的所有输出
     QByteArray allOutput = process.readAll();
@@ -158,7 +178,7 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
     }
     
     double seconds = timer.elapsed() / 1000.0;
-    return {process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0, seconds};
+    return {process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0, seconds, startTime, endTime};
 }
 
 int Worker::parseEpoch(const QString &log) {

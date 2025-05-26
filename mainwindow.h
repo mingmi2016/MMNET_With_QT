@@ -21,12 +21,18 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void changeProgress(int value); // 参考示例：用于更新进度条
 
 private slots:
     void on_pushButton_clicked();
     void on_pushButton_3_clicked();
     void on_pushButton_4_clicked();
-    void updateStep2Progress(int percent);    void step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds);    void updatePredictStatus(const QString &msg);    void updateProgressFromLog();public:    void changeProgress(int value); // 参考示例：用于更新进度条
+    void updateStep2Progress(int percent);
+    void step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds,
+                      const QDateTime &step1Start, const QDateTime &step1End, 
+                      const QDateTime &step2Start, const QDateTime &step2End);
+    void updatePredictStatus(const QString &msg);
+    void updateProgressFromLog();
 
 private:
     Ui::MainWindow *ui;

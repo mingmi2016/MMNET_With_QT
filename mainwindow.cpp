@@ -149,7 +149,9 @@ void MainWindow::changeProgress(int value) {
     ui->progressBar_step2->repaint(); // 强制立即刷新
 }
 
-void MainWindow::step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds) {
+void MainWindow::step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds,
+                               const QDateTime &step1Start, const QDateTime &step1End, 
+                               const QDateTime &step2Start, const QDateTime &step2End) {
     ui->progressBar_step2->setValue(100);
     
     QString timeMsg = QString("\n本次运行耗时：%1 秒\n第一步: %2 秒\n第二步: %3 秒").arg(seconds, 0, 'f', 2).arg(exe1Seconds, 0, 'f', 2).arg(exe2Seconds, 0, 'f', 2);
@@ -175,7 +177,7 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
 
     // 读取ESN.json和MMNET.json的epoch
     int esnEpoch = -1, mmnetEpoch = -1;
-    QFile esnFile(QDir::currentPath() + "/build/MMNET/configs/ESN.json");
+    QFile esnFile(QDir::currentPath() + "/MMNET/configs/ESN.json");
     if (esnFile.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(esnFile.readAll());
         QJsonObject obj = doc.object();
@@ -184,7 +186,7 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
             if (phenoObj.contains("saved")) esnEpoch = phenoObj["saved"].toInt();
         }
     }
-    QFile mmnetFile(QDir::currentPath() + "/build/MMNET/configs/MMNet.json");
+    QFile mmnetFile(QDir::currentPath() + "/MMNET/configs/MMNet.json");
     if (mmnetFile.open(QIODevice::ReadOnly)) {
         QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
         QJsonObject obj = doc.object();
@@ -194,8 +196,8 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
         }
     }
     // 统计目录大小递归函数
-    double geneSize = dirSizeMB(QDir::currentPath() + "/build/MMNET/data/gene");
-    double phenSize = dirSizeMB(QDir::currentPath() + "/build/MMNET/data/phen");
+    double geneSize = dirSizeMB(QDir::currentPath() + "/MMNET/data/gene");
+    double phenSize = dirSizeMB(QDir::currentPath() + "/MMNET/data/phen");
     // 写入日志
     QFile logFile(QDir::currentPath() + "/run_history.log");
     if (logFile.open(QIODevice::Append | QIODevice::Text)) {
@@ -203,8 +205,20 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
         out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ", ";
         out << (success ? "成功" : "失败") << ", ";
         out << "总耗时: " << seconds << "秒, ";
-        out << "第一步: " << exe1Seconds << "秒, ";
-        out << "第二步: " << exe2Seconds << "秒, ";
+        
+        // 详细时间记录
+        if (!step1Start.isNull() && !step1End.isNull()) {
+            out << "第一步开始: " << step1Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
+            out << "第一步结束: " << step1End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
+        }
+        out << "第一步耗时: " << exe1Seconds << "秒, ";
+        
+        if (!step2Start.isNull() && !step2End.isNull()) {
+            out << "第二步开始: " << step2Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
+            out << "第二步结束: " << step2End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
+        }
+        out << "第二步耗时: " << exe2Seconds << "秒, ";
+        
         out << "GPU: " << gpuName << ", ";
         out << "ESN epoch: " << esnEpoch << ", MMNET epoch: " << mmnetEpoch << ", ";
         out << "gene目录: " << QString::number(geneSize, 'f', 2) << " MB, ";
