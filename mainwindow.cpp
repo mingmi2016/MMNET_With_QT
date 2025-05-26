@@ -51,6 +51,8 @@ MainWindow::MainWindow(QWidget *parent)
     refreshPhenotypeOptions();
     // 默认禁用下载结果按钮
     ui->pushButton_download_pred->setEnabled(false);
+    // 默认隐藏进度条
+    ui->progressBar_step2->setVisible(false);
 }
 
 MainWindow::~MainWindow()
@@ -87,6 +89,10 @@ void MainWindow::on_pushButton_3_clicked()
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
         return;
     }
+    // 显示进度条并强制刷新
+    ui->progressBar_step2->setVisible(true);
+    ui->progressBar_step2->repaint();
+    QApplication::processEvents();
     // 创建空的日志文件
     QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
     QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");

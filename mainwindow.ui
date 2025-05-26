@@ -132,7 +132,18 @@
           <set>Qt::AlignCenter</set>
          </property>
          <property name="styleSheet">
-          <string>QProgressBar{height:24px;font-size:14px;} QProgressBar::chunk{background-color:#43b97f;}</string>
+          <string>QProgressBar {
+    height: 24px;
+    font-size: 14px;
+    border: 1px solid #cccccc;
+    border-radius: 8px;
+    background: #f5f5f5;
+}
+QProgressBar::chunk {
+    background-color: #43b97f;
+    border-radius: 8px;
+}
+</string>
          </property>
         </widget>
        </item>
