@@ -1,0 +1,322 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include "mymessagebox.h"
+#include <QProcess>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTimer>
+#include <QProgressBar>
+#include <QTextStream>
+#include <QApplication>
+#include <QDebug>
+#include <QDateTime>
+#include <QElapsedTimer>
+#include <QRegularExpression>
+#include "worker.h"
+
+// 统计目录大小递归函数
+static double dirSizeMB(const QString &path) {
+    QDir dir(path);
+    double size = 0;
+    if (!dir.exists()) return 0.0;
+    QFileInfoList list = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+    for (const QFileInfo &info : list) {
+        if (info.isDir()) {
+            size += dirSizeMB(info.absoluteFilePath());
+        } else {
+            size += info.size();
+        }
+    }
+    return size / (1024.0 * 1024.0);
+}
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::on_pushButton_3_clicked);
+    
+    // 初始化进度监控定时器
+    progressTimer = new QTimer(this);
+    connect(progressTimer, &QTimer::timeout, this, &MainWindow::updateProgressFromLog);
+}
+
+MainWindow::~MainWindow()
+{
+    if (progressTimer) {
+        progressTimer->stop();
+    }
+    delete ui;
+}
+
+void MainWindow::on_pushButton_clicked()
+{
+    QMessageBox msgBox(QMessageBox::Information, tr("提示信息"), tr("更新成功"), QMessageBox::Ok, this);
+    msgBox.setMinimumSize(300, 150);
+    msgBox.exec();
+}
+
+// 第二步训练模型
+void MainWindow::on_pushButton_3_clicked()
+{
+    // 创建空的日志文件
+    QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
+    QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
+    
+    if (step1Log.exists()) step1Log.remove();
+    if (step2Log.exists()) step2Log.remove();
+    
+    if (!step1Log.open(QIODevice::WriteOnly)) {
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(300, 150);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowTitle(tr("错误"));
+        msgBox.setText(tr("无法创建 step1.log 文件"));
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+        return;
+    }
+    step1Log.close();
+    
+    if (!step2Log.open(QIODevice::WriteOnly)) {
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(300, 150);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowTitle(tr("错误"));
+        msgBox.setText(tr("无法创建 step2.log 文件"));
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+        return;
+    }
+    step2Log.close();
+    
+    // 路径准备
+    QString exePath1 = QDir::currentPath() + "/MMNET/generate_genetic_relatedness.exe";
+    QString exePath2 = QDir::currentPath() + "/MMNET/train_mmnet.exe";
+    
+    // 检查exe文件是否存在
+    qDebug() << "Checking exe files:";
+    qDebug() << "exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
+    qDebug() << "exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
+    
+    QString log1 = QDir::currentPath() + "/MMNET/step1.log";
+    QString log2 = QDir::currentPath() + "/MMNET/step2.log";
+    QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
+    QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QString phenotype = "culmlength";
+    
+    if (workerThread) { 
+        workerThread->quit(); 
+        workerThread->wait(); 
+        delete workerThread; 
+        workerThread = nullptr; 
+    }
+    workerThread = new QThread(this);
+    worker = new Worker();
+    worker->setParams(exePath1, exePath2, log1, log2, json1, json2, phenotype);
+    worker->setMainWindow(this); // 参考示例：设置主窗口指针
+    worker->moveToThread(workerThread);
+    connect(workerThread, &QThread::started, worker, &Worker::run);
+    
+    // 连接进度信号
+    bool progressConnected = connect(worker, &Worker::progress, this, &MainWindow::updateStep2Progress, Qt::QueuedConnection);
+    bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
+    
+    qDebug() << "About to start worker thread...";
+    qDebug() << "Progress signal connected:" << progressConnected;
+    qDebug() << "Finished signal connected:" << finishedConnected;
+    
+    connect(worker, &Worker::finished, workerThread, &QThread::quit);
+    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
+    
+    ui->progressBar_step2->setValue(0);
+    step2StartTime = QDateTime::currentDateTime();
+    
+    workerThread->start();
+}
+
+void MainWindow::updateStep2Progress(int percent) {
+    qDebug() << "[MainWindow] Received progress signal:" << percent << "%";
+    ui->progressBar_step2->setValue(percent);
+    ui->progressBar_step2->repaint(); // 强制立即刷新显示
+}
+
+// 参考示例：更新进度条的方法
+void MainWindow::changeProgress(int value) {
+    qDebug() << "[MainWindow] changeProgress called with value:" << value;
+    ui->progressBar_step2->setValue(value);
+    ui->progressBar_step2->repaint(); // 强制立即刷新
+}
+
+void MainWindow::step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds) {
+    ui->progressBar_step2->setValue(100);
+    
+    QString timeMsg = QString("\n本次运行耗时：%1 秒\n第一步: %2 秒\n第二步: %3 秒").arg(seconds, 0, 'f', 2).arg(exe1Seconds, 0, 'f', 2).arg(exe2Seconds, 0, 'f', 2);
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(300, 150);
+    msgBox.setIcon(success ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setWindowTitle(success ? tr("运行完成") : tr("错误"));
+    msgBox.setText(msg + timeMsg);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+
+    // 获取GPU型号
+    QString gpuName = "Unknown";
+    QProcess gpuProc;
+    gpuProc.start("wmic", QStringList() << "path" << "win32_VideoController" << "get" << "name");
+    if (gpuProc.waitForFinished(2000)) {
+        QString output = gpuProc.readAllStandardOutput();
+        QStringList lines = output.split("\n", Qt::SkipEmptyParts);
+        if (lines.size() > 1) {
+            gpuName = lines[1].trimmed();
+        }
+    }
+
+    // 读取ESN.json和MMNET.json的epoch
+    int esnEpoch = -1, mmnetEpoch = -1;
+    QFile esnFile(QDir::currentPath() + "/build/MMNET/configs/ESN.json");
+    if (esnFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(esnFile.readAll());
+        QJsonObject obj = doc.object();
+        if (obj.contains("culmlength") && obj["culmlength"].isObject()) {
+            QJsonObject phenoObj = obj["culmlength"].toObject();
+            if (phenoObj.contains("saved")) esnEpoch = phenoObj["saved"].toInt();
+        }
+    }
+    QFile mmnetFile(QDir::currentPath() + "/build/MMNET/configs/MMNet.json");
+    if (mmnetFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
+        QJsonObject obj = doc.object();
+        if (obj.contains("culmlength") && obj["culmlength"].isObject()) {
+            QJsonObject phenoObj = obj["culmlength"].toObject();
+            if (phenoObj.contains("saved")) mmnetEpoch = phenoObj["saved"].toInt();
+        }
+    }
+    // 统计目录大小递归函数
+    double geneSize = dirSizeMB(QDir::currentPath() + "/build/MMNET/data/gene");
+    double phenSize = dirSizeMB(QDir::currentPath() + "/build/MMNET/data/phen");
+    // 写入日志
+    QFile logFile(QDir::currentPath() + "/run_history.log");
+    if (logFile.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&logFile);
+        out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ", ";
+        out << (success ? "成功" : "失败") << ", ";
+        out << "总耗时: " << seconds << "秒, ";
+        out << "第一步: " << exe1Seconds << "秒, ";
+        out << "第二步: " << exe2Seconds << "秒, ";
+        out << "GPU: " << gpuName << ", ";
+        out << "ESN epoch: " << esnEpoch << ", MMNET epoch: " << mmnetEpoch << ", ";
+        out << "gene目录: " << QString::number(geneSize, 'f', 2) << " MB, ";
+        out << "phen目录: " << QString::number(phenSize, 'f', 2) << " MB\n";
+        logFile.close();
+    }
+}
+
+void MainWindow::on_pushButton_4_clicked()
+{
+    // 防止重复触发
+    if (!ui->pushButton_4->isEnabled()) return;
+    
+    QString oldText = ui->pushButton_4->text();
+    ui->pushButton_4->setText("预测中...");
+    ui->pushButton_4->setEnabled(false);
+    ui->pushButton_4->repaint();
+    
+    // 运行 pred.exe
+    QString exePath = QDir::currentPath() + "/build/MMNET/pred.exe";
+    if (!QFile::exists(exePath)) {
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(300, 150);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowTitle(tr("错误"));
+        msgBox.setText(tr("找不到 pred.exe"));
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+        ui->pushButton_4->setText(oldText);
+        ui->pushButton_4->setEnabled(true);
+        return;
+    }
+
+    QProcess *process = new QProcess(this);
+    process->setWorkingDirectory(QDir::currentPath() + "/build/MMNET");
+    process->start(exePath);
+    process->waitForFinished(-1);
+
+    if (process->exitStatus() != QProcess::NormalExit || process->exitCode() != 0) {
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(300, 150);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowTitle(tr("错误"));
+        msgBox.setText(tr("pred.exe 运行失败！"));
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+        process->deleteLater();
+        ui->pushButton_4->setText(oldText);
+        ui->pushButton_4->setEnabled(true);
+        return;
+    }
+
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(300, 150);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("运行完成"));
+    msgBox.setText(tr("预测已完成！"));
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+    
+    ui->pushButton_4->setText(oldText);
+    ui->pushButton_4->setEnabled(true);
+    process->deleteLater();
+}
+
+void MainWindow::updatePredictStatus(const QString &msg) {
+    ui->label_predict_status->setText(msg);
+}
+
+// 进度监控相关方法
+void MainWindow::startProgressMonitoring(const QString &logPath, int totalEpoch) {
+    currentLogPath = logPath;
+    currentTotalEpoch = totalEpoch;
+    lastParsedEpoch = -1;
+    progressTimer->start(500); // 每500ms检查一次
+}
+
+void MainWindow::stopProgressMonitoring() {
+    if (progressTimer) {
+        progressTimer->stop();
+    }
+}
+
+int MainWindow::parseEpochFromLog(const QString &logPath) {
+    QFile f(logPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return -1;
+    }
+    int lastEpoch = -1;
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        QRegularExpression re("epoch = (\\d+)");
+        auto match = re.match(line);
+        if (match.hasMatch()) {
+            lastEpoch = match.captured(1).toInt();
+        }
+    }
+    return lastEpoch;
+}
+
+void MainWindow::updateProgressFromLog() {
+    int curEpoch = parseEpochFromLog(currentLogPath);
+    if (curEpoch > lastParsedEpoch) {
+        lastParsedEpoch = curEpoch;
+        int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / currentTotalEpoch));
+        qDebug() << "[MainWindow] Real-time progress from log:" << percent << "%, epoch:" << curEpoch;
+        ui->progressBar_step2->setValue(percent);
+    }
+}
+
+
+

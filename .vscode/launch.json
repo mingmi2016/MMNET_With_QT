@@ -1,0 +1,31 @@
+{
+    // 使用MinGW GDB调试器调试Qt C++项目
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug DEMO01(MinGW)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Demo01.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:/Qt/6.9.0/mingw_64/bin;E:/Qt/Tools/QtCreator/bin;${env:PATH}"
+                }
+            ],
+            "externalConsole": true,
+            "MIMode": "gdb",
+            "miDebuggerPath": "E:/Qt/Tools/mingw1310_64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "为 gdb 启用漂亮打印",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+} 
