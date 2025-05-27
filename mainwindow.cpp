@@ -17,6 +17,7 @@
 #include "worker.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QThread>
 
 // 统计目录大小递归函数
 static double dirSizeMB(const QString &path) {
@@ -38,6 +39,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
+    qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
     connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::on_pushButton_3_clicked);
     
@@ -57,6 +59,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    qDebug() << "[MainWindow] Destructor called, this=" << this << ", thread=" << QThread::currentThread();
     if (progressTimer) {
         progressTimer->stop();
     }
@@ -85,6 +88,7 @@ void MainWindow::on_pushButton_5_clicked()
 // 第二步训练模型
 void MainWindow::on_pushButton_3_clicked()
 {
+    qDebug() << "[MainWindow] on_pushButton_3_clicked, this=" << this << ", thread=" << QThread::currentThread();
     if (selectedPhenotype.isEmpty()) {
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
         return;
@@ -140,6 +144,7 @@ void MainWindow::on_pushButton_3_clicked()
     QString phenotype = selectedPhenotype;
     
     if (workerThread) { 
+        qDebug() << "[MainWindow] Deleting old workerThread, thread=" << workerThread;
         workerThread->quit(); 
         workerThread->wait(); 
         delete workerThread; 
@@ -147,16 +152,16 @@ void MainWindow::on_pushButton_3_clicked()
     }
     workerThread = new QThread(this);
     worker = new Worker();
+    qDebug() << "[MainWindow] New Worker created, worker=" << worker << ", workerThread=" << workerThread;
     worker->setParams(exePath1, exePath2, log1, log2, json1, json2, phenotype);
     worker->setMainWindow(this); // 参考示例：设置主窗口指针
     worker->moveToThread(workerThread);
-    connect(workerThread, &QThread::started, worker, &Worker::run);
+    bool startedConn = connect(workerThread, &QThread::started, worker, &Worker::run);
+    qDebug() << "[MainWindow] workerThread->started -> worker->run connected:" << startedConn;
     
     // 只连接finished信号，progress信号由Worker内部处理
     bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
-    
-    qDebug() << "About to start worker thread...";
-    qDebug() << "Finished signal connected:" << finishedConnected;
+    qDebug() << "[MainWindow] worker->finished -> step2Finished connected:" << finishedConnected;
     
     connect(worker, &Worker::finished, workerThread, &QThread::quit);
     connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
@@ -175,7 +180,7 @@ void MainWindow::updateStep2Progress(int percent) {
 
 // 参考示例：更新进度条的方法
 void MainWindow::changeProgress(int value) {
-    qDebug() << "[MainWindow] changeProgress called with value:" << value;
+    qDebug() << "[MainWindow] changeProgress called with value:" << value << ", this=" << this << ", thread=" << QThread::currentThread();
     ui->progressBar_step2->setValue(value);
     ui->progressBar_step2->repaint(); // 强制立即刷新
 }
@@ -183,6 +188,7 @@ void MainWindow::changeProgress(int value) {
 void MainWindow::step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds,
                                const QDateTime &step1Start, const QDateTime &step1End, 
                                const QDateTime &step2Start, const QDateTime &step2End) {
+    qDebug() << "[MainWindow] step2Finished called, this=" << this << ", thread=" << QThread::currentThread();
     ui->progressBar_step2->setValue(100);
     
     QString timeMsg = QString("\n本次运行耗时：%1 秒\n第一步: %2 秒\n第二步: %3 秒").arg(seconds, 0, 'f', 2).arg(exe1Seconds, 0, 'f', 2).arg(exe2Seconds, 0, 'f', 2);

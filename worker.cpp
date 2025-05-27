@@ -13,8 +13,10 @@
 #include <QThread>
 
 Worker::Worker(QObject *parent) : QObject(parent), main_window(nullptr), current_progress(0) {
+    qDebug() << "[Worker] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     // 按照参考代码模式：连接内部信号到内部槽
-    connect(this, SIGNAL(sendProgressSignal()), this, SLOT(updateProgress()));
+    bool conn = connect(this, SIGNAL(sendProgressSignal()), this, SLOT(updateProgress()));
+    qDebug() << "[Worker] sendProgressSignal->updateProgress connected:" << conn;
 }
 
 void Worker::setParams(const QString &exe1, const QString &exe2, const QString &log1, const QString &log2, const QString &json1, const QString &json2, const QString &pheno) {
@@ -25,16 +27,21 @@ void Worker::setParams(const QString &exe1, const QString &exe2, const QString &
     jsonPath1 = json1; 
     jsonPath2 = json2; 
     phenotype = pheno;
+    qDebug() << "[Worker] setParams called, this=" << this << ", exe1=" << exe1 << ", exe2=" << exe2 << ", pheno=" << pheno;
 }
 
 void Worker::setMainWindow(MainWindow *mainWin) {
     main_window = mainWin;
+    qDebug() << "[Worker] setMainWindow called, this=" << this << ", mainWin=" << mainWin;
 }
 
 void Worker::updateProgress() {
+    qDebug() << "[Worker] updateProgress called, this=" << this << ", progress=" << current_progress << ", thread=" << QThread::currentThread();
     // 按照参考代码模式：直接调用主窗口的方法更新进度
     if (main_window) {
         main_window->changeProgress(current_progress);
+    } else {
+        qDebug() << "[Worker] main_window is nullptr!";
     }
 }
 
@@ -49,7 +56,7 @@ int Worker::calculateOverallProgress(int stepProgress, bool isStep1) {
 }
 
 void Worker::run() {
-    qDebug() << "[Worker] ===== Worker::run() called! =====";
+    qDebug() << "[Worker] ===== Worker::run() called! ===== this=" << this << ", thread=" << QThread::currentThread();
     qDebug() << "[Worker] Start run: " << exePath1 << exePath2;
     
     // 检查exe文件是否存在
@@ -113,56 +120,58 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
     // 启动进程
     QProcess process;
     process.setWorkingDirectory(QFileInfo(exe).absolutePath());
-    
-    // 捕获所有输出
     process.setProcessChannelMode(QProcess::MergedChannels);
-    
     qDebug() << "[Worker] Starting process:" << exe;
     qDebug() << "[Worker] Working directory:" << QFileInfo(exe).absolutePath();
     qDebug() << "[Worker] Arguments:" << (QStringList() << "--phenotype" << pheno);
-    
     process.start(exe, QStringList() << "--phenotype" << pheno);
     if (!process.waitForStarted()) { 
         qDebug() << "[Worker] Failed to start process:" << exe;
         qDebug() << "[Worker] Error:" << process.errorString();
         return {false, 0.0}; 
     }
-    
     qDebug() << "[Worker] Process started, PID:" << process.processId();
-    
-    // 简化的监控循环，按照参考代码模式
+    // 监控进度（只在进程运行时解析log）
     int lastEpoch = -1;
+    bool reached100 = false;
     qDebug() << "[Worker] Starting monitoring loop for log:" << log << ", isStep1:" << isStep1;
-    while (!process.waitForFinished(500)) {
+    int lastPrintedReturned = INT_MIN;
+    while (process.state() == QProcess::Running) {
+        process.waitForFinished(500);
         int curEpoch = parseEpoch(log);
-        qDebug() << "[Worker] parseEpoch returned:" << curEpoch << "for log:" << log;
+        if (curEpoch != lastPrintedReturned) {
+            qDebug() << "[Worker] parseEpoch returned:" << curEpoch << "for log:" << log;
+            lastPrintedReturned = curEpoch;
+        }
         if (curEpoch > lastEpoch) {
             lastEpoch = curEpoch;
             int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / totalEpoch));
-            qDebug() << "[Worker] Step progress:" << percent << "%, isStep1:" << isStep1;
+            qDebug() << "[Worker] Step progress:" << percent << "% , isStep1:" << isStep1;
             current_progress = calculateOverallProgress(percent, isStep1);
             qDebug() << "[Worker] Overall progress:" << current_progress << "%";
             emit sendProgressSignal();
+            if (current_progress >= 100) {
+                reached100 = true;
+                process.kill();
+                process.waitForFinished(-1);
+                break;
+            }
         }
     }
-    
-    // 确保最终进度
+    // 进程结束后，做一次最终进度
     current_progress = calculateOverallProgress(100, isStep1);
     qDebug() << "[Worker] Final progress for step (isStep1=" << isStep1 << "):" << current_progress << "%";
     emit sendProgressSignal();
-    
     QDateTime endTime = QDateTime::currentDateTime();
     qDebug() << "[Worker] Process finished, exitCode:" << process.exitCode() << ", exitStatus:" << process.exitStatus();
     qDebug() << "[Worker] End time:" << endTime.toString("yyyy-MM-dd hh:mm:ss");
-    
     // 捕获进程的所有输出
     QByteArray allOutput = process.readAll();
     if (!allOutput.isEmpty()) {
         qDebug() << "[Worker] Process output:";
         qDebug().noquote() << QString::fromLocal8Bit(allOutput);
     }
-    
-    // 如果进程失败，输出日志最后20行
+    // 如果进程失败，输出日志最后20行，并立即return
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         QFile flog(log);
         if (flog.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -175,16 +184,21 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
                 qDebug().noquote() << lines[i];
             }
         }
+        double seconds = timer.elapsed() / 1000.0;
+        return {false, seconds, startTime, endTime};
     }
-    
     double seconds = timer.elapsed() / 1000.0;
     return {process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0, seconds, startTime, endTime};
 }
 
 int Worker::parseEpoch(const QString &log) {
+    static QMap<QString, int> lastPrintedEpoch; // 记录每个log文件上次打印的epoch
     QFile f(log);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) { 
-        qDebug() << "[Worker] Failed to open log:" << log; 
+        if (lastPrintedEpoch.value(log, INT_MIN) != -2) {
+            qDebug() << "[Worker] parseEpoch failed to open log:" << log;
+            lastPrintedEpoch[log] = -2;
+        }
         return -1; 
     }
     int lastEpoch = -1;
@@ -197,7 +211,11 @@ int Worker::parseEpoch(const QString &log) {
             lastEpoch = match.captured(1).toInt();
         }
     }
-    qDebug() << "[Worker] parseEpoch lastEpoch:" << lastEpoch;
+    // 只有epoch变化时才打印
+    if (lastPrintedEpoch.value(log, INT_MIN) != lastEpoch) {
+        qDebug() << "[Worker] parseEpoch lastEpoch:" << lastEpoch << ", log:" << log;
+        lastPrintedEpoch[log] = lastEpoch;
+    }
     return lastEpoch;
 }
 
