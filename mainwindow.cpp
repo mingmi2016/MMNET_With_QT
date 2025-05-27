@@ -42,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
     qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
     connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::on_pushButton_3_clicked);
+    qDebug() << "[MainWindow] connect pushButton_3 -> on_pushButton_3_clicked";
     
     // 初始化进度监控定时器
     progressTimer = new QTimer(this);
@@ -88,7 +89,15 @@ void MainWindow::on_pushButton_5_clicked()
 // 第二步训练模型
 void MainWindow::on_pushButton_3_clicked()
 {
-    qDebug() << "[MainWindow] on_pushButton_3_clicked, this=" << this << ", thread=" << QThread::currentThread();
+    if (isStep2Running) {
+        qDebug() << "[MainWindow] on_pushButton_3_clicked: already running, ignore.";
+        return;
+    }
+    isStep2Running = true;
+    ui->pushButton_3->setEnabled(false); // 禁用按钮
+    static int callCount = 0;
+    ++callCount;
+    qDebug() << "[MainWindow] on_pushButton_3_clicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
     if (selectedPhenotype.isEmpty()) {
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
         return;
@@ -157,11 +166,11 @@ void MainWindow::on_pushButton_3_clicked()
     worker->setMainWindow(this); // 参考示例：设置主窗口指针
     worker->moveToThread(workerThread);
     bool startedConn = connect(workerThread, &QThread::started, worker, &Worker::run);
-    qDebug() << "[MainWindow] workerThread->started -> worker->run connected:" << startedConn;
+    qDebug() << "[MainWindow] workerThread->started -> worker->run connected:" << startedConn << ", workerThread=" << workerThread << ", worker=" << worker;
     
     // 只连接finished信号，progress信号由Worker内部处理
     bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
-    qDebug() << "[MainWindow] worker->finished -> step2Finished connected:" << finishedConnected;
+    qDebug() << "[MainWindow] worker->finished -> step2Finished connected:" << finishedConnected << ", worker=" << worker;
     
     connect(worker, &Worker::finished, workerThread, &QThread::quit);
     connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
@@ -189,8 +198,12 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
                                const QDateTime &step1Start, const QDateTime &step1End, 
                                const QDateTime &step2Start, const QDateTime &step2End) {
     qDebug() << "[MainWindow] step2Finished called, this=" << this << ", thread=" << QThread::currentThread();
-    ui->progressBar_step2->setValue(100);
-    
+    isStep2Running = false;
+    ui->pushButton_3->setEnabled(true); // 恢复按钮
+    if (success) {
+        ui->progressBar_step2->setValue(100);
+    }
+    // 失败时不强制100%，保留最后进度
     QString timeMsg = QString("\n本次运行耗时：%1 秒\n第一步: %2 秒\n第二步: %3 秒").arg(seconds, 0, 'f', 2).arg(exe1Seconds, 0, 'f', 2).arg(exe2Seconds, 0, 'f', 2);
     MyMessageBox msgBox(this);
     msgBox.setMySize(300, 150);

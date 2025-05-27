@@ -67,5 +67,8 @@ private:
     QButtonGroup *phenotypeGroup = nullptr;
     QString selectedPhenotype;
     void refreshPhenotypeOptions();
+
+    // 防止重复运行step2
+    bool isStep2Running = false;
 };
 #endif // MAINWINDOW_H

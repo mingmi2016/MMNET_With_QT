@@ -56,7 +56,7 @@ int Worker::calculateOverallProgress(int stepProgress, bool isStep1) {
 }
 
 void Worker::run() {
-    qDebug() << "[Worker] ===== Worker::run() called! ===== this=" << this << ", thread=" << QThread::currentThread();
+    qDebug() << "[Worker] ===== Worker::run() called! ===== this=" << this << ", thread=" << QThread::currentThread() << ", func=" << Q_FUNC_INFO;
     qDebug() << "[Worker] Start run: " << exePath1 << exePath2;
     
     // 检查exe文件是否存在
@@ -116,6 +116,7 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
         if (phenoObj.contains("saved")) totalEpoch = phenoObj["saved"].toInt();
     }
     if (totalEpoch <= 0) totalEpoch = 100;
+    // 现在totalEpoch表示最大epoch编号（如2），实际epoch数为totalEpoch+1
     
     // 启动进程
     QProcess process;
@@ -133,7 +134,6 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
     qDebug() << "[Worker] Process started, PID:" << process.processId();
     // 监控进度（只在进程运行时解析log）
     int lastEpoch = -1;
-    bool reached100 = false;
     qDebug() << "[Worker] Starting monitoring loop for log:" << log << ", isStep1:" << isStep1;
     int lastPrintedReturned = INT_MIN;
     while (process.state() == QProcess::Running) {
@@ -145,18 +145,21 @@ StepResult Worker::runStep(const QString &exe, const QString &log, const QString
         }
         if (curEpoch > lastEpoch) {
             lastEpoch = curEpoch;
-            int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / totalEpoch));
+            // 优化进度百分比计算：(curEpoch+1)/(totalEpoch+1)
+            int percent = qMin(100, (int)(((curEpoch + 1) * 100.0) / (totalEpoch + 1)));
             qDebug() << "[Worker] Step progress:" << percent << "% , isStep1:" << isStep1;
             current_progress = calculateOverallProgress(percent, isStep1);
             qDebug() << "[Worker] Overall progress:" << current_progress << "%";
             emit sendProgressSignal();
-            if (current_progress >= 100) {
-                reached100 = true;
-                process.kill();
-                process.waitForFinished(-1);
-                break;
-            }
         }
+        // 如果已经到最后一个epoch，提前跳出循环
+        if (curEpoch >= totalEpoch) {
+            break;
+        }
+    }
+    // 等进程完全退出
+    if (process.state() != QProcess::NotRunning) {
+        process.waitForFinished(-1);
     }
     // 进程结束后，做一次最终进度
     current_progress = calculateOverallProgress(100, isStep1);
