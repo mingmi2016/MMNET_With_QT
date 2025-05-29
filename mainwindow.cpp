@@ -18,6 +18,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QThread>
+#include "savedsettingdialog.h"
 
 // 统计目录大小递归函数
 static double dirSizeMB(const QString &path) {
@@ -93,15 +94,100 @@ void MainWindow::on_pushButton_3_clicked()
         qDebug() << "[MainWindow] on_pushButton_3_clicked: already running, ignore.";
         return;
     }
+    if (selectedPhenotype.isEmpty()) {
+        QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
+        return;
+    }
+    // 读取json参数
+    QString esnJson = QDir::currentPath() + "/MMNET/configs/ESN.json";
+    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QFile esnFile(esnJson);
+    QFile mmnetFile(mmnetJson);
+    int esnBatch = 128, esnSaved = 100;
+    double esnP = 0.8;
+    int mmnetBatch = 128, mmnetSaved = 100;
+    double mmnetP1 = 0.8, mmnetP2 = 0.8, mmnetP3 = 0.8, mmnetP4 = 0.6, mmnetWd = 1e-5;
+    // 读取ESN.json
+    if (esnFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(esnFile.readAll());
+        QJsonObject obj = doc.object();
+        if (obj.contains(selectedPhenotype) && obj[selectedPhenotype].isObject()) {
+            QJsonObject phenoObj = obj[selectedPhenotype].toObject();
+            if (phenoObj.contains("batch size")) esnBatch = phenoObj["batch size"].toInt();
+            if (phenoObj.contains("p")) esnP = phenoObj["p"].toDouble();
+            if (phenoObj.contains("saved")) esnSaved = phenoObj["saved"].toInt();
+        }
+        esnFile.close();
+    }
+    // 读取MMNet.json
+    if (mmnetFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
+        QJsonObject obj = doc.object();
+        if (obj.contains(selectedPhenotype) && obj[selectedPhenotype].isObject()) {
+            QJsonObject phenoObj = obj[selectedPhenotype].toObject();
+            if (phenoObj.contains("batch size")) mmnetBatch = phenoObj["batch size"].toInt();
+            if (phenoObj.contains("p1")) mmnetP1 = phenoObj["p1"].toDouble();
+            if (phenoObj.contains("p2")) mmnetP2 = phenoObj["p2"].toDouble();
+            if (phenoObj.contains("p3")) mmnetP3 = phenoObj["p3"].toDouble();
+            if (phenoObj.contains("p4")) mmnetP4 = phenoObj["p4"].toDouble();
+            if (phenoObj.contains("saved")) mmnetSaved = phenoObj["saved"].toInt();
+            if (phenoObj.contains("wd")) mmnetWd = phenoObj["wd"].toDouble();
+        }
+        mmnetFile.close();
+    }
+    // 弹出设置参数的对话框
+    SavedSettingDialog dlg(this);
+    dlg.setPhenotype(selectedPhenotype);
+    dlg.setEsnValues(esnBatch, esnP, esnSaved);
+    dlg.setMmnetValues(mmnetBatch, mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetSaved, mmnetWd);
+    if (dlg.exec() != QDialog::Accepted) {
+        isStep2Running = false;
+        return;
+    }
+    // 获取用户设置
+    dlg.getEsnValues(esnBatch, esnP, esnSaved);
+    dlg.getMmnetValues(mmnetBatch, mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetSaved, mmnetWd);
+    // 写回ESN.json
+    if (esnFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(esnFile.readAll());
+        QJsonObject obj = doc.object();
+        QJsonObject phenoObj = obj.value(selectedPhenotype).toObject();
+        phenoObj["batch size"] = esnBatch;
+        phenoObj["p"] = esnP;
+        phenoObj["saved"] = esnSaved;
+        obj[selectedPhenotype] = phenoObj;
+        esnFile.close();
+        if (esnFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QJsonDocument newDoc(obj);
+            esnFile.write(newDoc.toJson(QJsonDocument::Indented));
+            esnFile.close();
+        }
+    }
+    // 写回MMNet.json
+    if (mmnetFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
+        QJsonObject obj = doc.object();
+        QJsonObject phenoObj = obj.value(selectedPhenotype).toObject();
+        phenoObj["batch size"] = mmnetBatch;
+        phenoObj["p1"] = mmnetP1;
+        phenoObj["p2"] = mmnetP2;
+        phenoObj["p3"] = mmnetP3;
+        phenoObj["p4"] = mmnetP4;
+        phenoObj["saved"] = mmnetSaved;
+        phenoObj["wd"] = mmnetWd;
+        obj[selectedPhenotype] = phenoObj;
+        mmnetFile.close();
+        if (mmnetFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QJsonDocument newDoc(obj);
+            mmnetFile.write(newDoc.toJson(QJsonDocument::Indented));
+            mmnetFile.close();
+        }
+    }
     isStep2Running = true;
     ui->pushButton_3->setEnabled(false); // 禁用按钮
     static int callCount = 0;
     ++callCount;
     qDebug() << "[MainWindow] on_pushButton_3_clicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
-    if (selectedPhenotype.isEmpty()) {
-        QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
-        return;
-    }
     // 显示进度条并强制刷新
     ui->progressBar_step2->setVisible(true);
     ui->progressBar_step2->repaint();
@@ -109,10 +195,8 @@ void MainWindow::on_pushButton_3_clicked()
     // 创建空的日志文件
     QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
     QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
-    
     if (step1Log.exists()) step1Log.remove();
     if (step2Log.exists()) step2Log.remove();
-    
     if (!step1Log.open(QIODevice::WriteOnly)) {
         MyMessageBox msgBox(this);
         msgBox.setMySize(300, 150);
@@ -124,7 +208,6 @@ void MainWindow::on_pushButton_3_clicked()
         return;
     }
     step1Log.close();
-    
     if (!step2Log.open(QIODevice::WriteOnly)) {
         MyMessageBox msgBox(this);
         msgBox.setMySize(300, 150);
@@ -136,22 +219,18 @@ void MainWindow::on_pushButton_3_clicked()
         return;
     }
     step2Log.close();
-    
     // 路径准备
     QString exePath1 = QDir::currentPath() + "/MMNET/generate_genetic_relatedness.exe";
     QString exePath2 = QDir::currentPath() + "/MMNET/train_mmnet.exe";
-    
     // 检查exe文件是否存在
     qDebug() << "Checking exe files:";
     qDebug() << "exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
     qDebug() << "exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
-    
     QString log1 = QDir::currentPath() + "/MMNET/step1.log";
     QString log2 = QDir::currentPath() + "/MMNET/step2.log";
     QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
     QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
     QString phenotype = selectedPhenotype;
-    
     if (workerThread) { 
         qDebug() << "[MainWindow] Deleting old workerThread, thread=" << workerThread;
         workerThread->quit(); 
@@ -167,17 +246,13 @@ void MainWindow::on_pushButton_3_clicked()
     worker->moveToThread(workerThread);
     bool startedConn = connect(workerThread, &QThread::started, worker, &Worker::run);
     qDebug() << "[MainWindow] workerThread->started -> worker->run connected:" << startedConn << ", workerThread=" << workerThread << ", worker=" << worker;
-    
     // 只连接finished信号，progress信号由Worker内部处理
     bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
     qDebug() << "[MainWindow] worker->finished -> step2Finished connected:" << finishedConnected << ", worker=" << worker;
-    
     connect(worker, &Worker::finished, workerThread, &QThread::quit);
     connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
-    
     ui->progressBar_step2->setValue(0);
     step2StartTime = QDateTime::currentDateTime();
-    
     workerThread->start();
 }
 
@@ -317,7 +392,9 @@ void MainWindow::on_pushButton_4_clicked()
 
     QProcess *process = new QProcess(this);
     process->setWorkingDirectory(QDir::currentPath() + "/MMNET");
-    process->start(exePath);
+    QStringList args;
+    args << "--phenotype" << selectedPhenotype;
+    process->start(exePath, args);
     process->waitForFinished(-1);
 
     if (process->exitStatus() != QProcess::NormalExit || process->exitCode() != 0) {
@@ -567,6 +644,25 @@ void MainWindow::on_pushButton_download_pred_clicked()
     } else {
         QMessageBox::warning(this, tr("错误"), tr("保存失败，请检查目标路径权限！"));
     }
+}
+
+bool MainWindow::updateSavedValue(const QString &jsonPath, const QString &phenotype, int savedValue)
+{
+    QFile file(jsonPath);
+    if (!file.open(QIODevice::ReadOnly)) return false;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+    if (!doc.isObject()) return false;
+    QJsonObject obj = doc.object();
+    if (!obj.contains(phenotype) || !obj[phenotype].isObject()) return false;
+    QJsonObject phenoObj = obj[phenotype].toObject();
+    phenoObj["saved"] = savedValue;
+    obj[phenotype] = phenoObj;
+    QJsonDocument newDoc(obj);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    file.write(newDoc.toJson(QJsonDocument::Indented));
+    file.close();
+    return true;
 }
 
 

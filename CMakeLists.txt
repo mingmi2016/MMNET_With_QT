@@ -21,6 +21,7 @@ set(PROJECT_SOURCES
         mymessagebox.cpp
         worker.h
         worker.cpp
+        savedsettingdialog.cpp
 )
 
 qt_add_executable(Demo01

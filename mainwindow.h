@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QButtonGroup>
 #include <QRadioButton>
+#include "savedsettingdialog.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -70,5 +71,8 @@ private:
 
     // 防止重复运行step2
     bool isStep2Running = false;
+
+    // 添加：保存saved值到json的辅助函数
+    bool updateSavedValue(const QString &jsonPath, const QString &phenotype, int savedValue);
 };
 #endif // MAINWINDOW_H
