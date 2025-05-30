@@ -42,8 +42,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
-    connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::on_pushButton_3_clicked);
-    qDebug() << "[MainWindow] connect pushButton_3 -> on_pushButton_3_clicked";
+    connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleRunModelClicked);
+    qDebug() << "[MainWindow] connect pushButton_3 -> handleRunModelClicked";
     
     // 初始化进度监控定时器
     progressTimer = new QTimer(this);
@@ -51,7 +51,7 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化phenotype单选组
     phenotypeGroup = new QButtonGroup(this);
     phenotypeGroup->setExclusive(true);
-    connect(phenotypeGroup, SIGNAL(buttonClicked(int)), this, SLOT(onPhenotypeSelected()));
+    connect(phenotypeGroup, QOverload<QAbstractButton*>::of(&QButtonGroup::buttonClicked), this, &MainWindow::onPhenotypeSelected);
     refreshPhenotypeOptions();
     // 默认禁用下载结果按钮
     ui->pushButton_download_pred->setEnabled(false);
@@ -88,13 +88,19 @@ void MainWindow::on_pushButton_5_clicked()
 }
 
 // 第二步训练模型
-void MainWindow::on_pushButton_3_clicked()
+void MainWindow::handleRunModelClicked()
 {
+    static bool dialogOpen = false;
+    if (dialogOpen) return;
+    dialogOpen = true;
+    qDebug() << "[Debug] handleRunModelClicked triggered";
     if (isStep2Running) {
-        qDebug() << "[MainWindow] on_pushButton_3_clicked: already running, ignore.";
+        dialogOpen = false;
+        qDebug() << "[MainWindow] handleRunModelClicked: already running, ignore.";
         return;
     }
     if (selectedPhenotype.isEmpty()) {
+        dialogOpen = false;
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个表型文件！"));
         return;
     }
@@ -135,12 +141,17 @@ void MainWindow::on_pushButton_3_clicked()
         }
         mmnetFile.close();
     }
-    // 弹出设置参数的对话框
+    // 弹出设置参数的对话框前先禁用按钮
+    ui->pushButton_3->setEnabled(false);
     SavedSettingDialog dlg(this);
     dlg.setPhenotype(selectedPhenotype);
     dlg.setEsnValues(esnBatch, esnP, esnSaved);
     dlg.setMmnetValues(mmnetBatch, mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetSaved, mmnetWd);
-    if (dlg.exec() != QDialog::Accepted) {
+    int dlgResult = dlg.exec();
+    // 延迟恢复按钮可用，防止事件队列重复触发
+    QTimer::singleShot(0, this, [this](){ ui->pushButton_3->setEnabled(true); });
+    dialogOpen = false;
+    if (dlgResult != QDialog::Accepted) {
         isStep2Running = false;
         return;
     }
@@ -187,7 +198,7 @@ void MainWindow::on_pushButton_3_clicked()
     ui->pushButton_3->setEnabled(false); // 禁用按钮
     static int callCount = 0;
     ++callCount;
-    qDebug() << "[MainWindow] on_pushButton_3_clicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
+    qDebug() << "[MainWindow] handleRunModelClicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
     // 显示进度条并强制刷新
     ui->progressBar_step2->setVisible(true);
     ui->progressBar_step2->repaint();

@@ -238,5 +238,4 @@ QPushButton:disabled{background-color:#cccccc;color:#888888;border:1px solid #bb
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
  <resources/>
- <connections/>
 </ui>

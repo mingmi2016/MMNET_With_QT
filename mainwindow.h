@@ -33,7 +33,7 @@ private slots:
     void on_pushButton_clicked();    // 上传基因文件
     void on_pushButton_2_clicked();  // 上传表型文件
     void on_pushButton_5_clicked();  // 上传待预测文件
-    void on_pushButton_3_clicked();
+    void handleRunModelClicked();
     void on_pushButton_4_clicked();
     void on_pushButton_download_pred_clicked();
     void updateStep2Progress(int percent);

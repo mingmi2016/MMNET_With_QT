@@ -7,37 +7,58 @@
 #include <QDoubleSpinBox>
 #include <QGroupBox>
 #include <QFormLayout>
+#include <QAbstractSpinBox>
 SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle(tr("设置模型参数"));
     labelTitle = new QLabel(this);
     // ESN
     spinEsnBatch = new QSpinBox(this);
     spinEsnBatch->setRange(1, 100000);
+    spinEsnBatch->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinEsnBatch->setKeyboardTracking(true);
     spinEsnP = new QDoubleSpinBox(this);
     spinEsnP->setRange(0, 1);
     spinEsnP->setDecimals(4);
+    spinEsnP->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinEsnP->setKeyboardTracking(true);
     spinEsnSaved = new QSpinBox(this);
     spinEsnSaved->setRange(1, 10000);
+    spinEsnSaved->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinEsnSaved->setKeyboardTracking(true);
     // MMNet
     spinMmnetBatch = new QSpinBox(this);
     spinMmnetBatch->setRange(1, 100000);
+    spinMmnetBatch->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetBatch->setKeyboardTracking(true);
     spinMmnetP1 = new QDoubleSpinBox(this);
     spinMmnetP1->setRange(0, 1);
     spinMmnetP1->setDecimals(4);
+    spinMmnetP1->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetP1->setKeyboardTracking(true);
     spinMmnetP2 = new QDoubleSpinBox(this);
     spinMmnetP2->setRange(0, 1);
     spinMmnetP2->setDecimals(4);
+    spinMmnetP2->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetP2->setKeyboardTracking(true);
     spinMmnetP3 = new QDoubleSpinBox(this);
     spinMmnetP3->setRange(0, 1);
     spinMmnetP3->setDecimals(4);
+    spinMmnetP3->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetP3->setKeyboardTracking(true);
     spinMmnetP4 = new QDoubleSpinBox(this);
     spinMmnetP4->setRange(0, 1);
     spinMmnetP4->setDecimals(4);
+    spinMmnetP4->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetP4->setKeyboardTracking(true);
     spinMmnetSaved = new QSpinBox(this);
     spinMmnetSaved->setRange(1, 10000);
+    spinMmnetSaved->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetSaved->setKeyboardTracking(true);
     spinMmnetWd = new QDoubleSpinBox(this);
     spinMmnetWd->setRange(0, 1);
     spinMmnetWd->setDecimals(8);
+    spinMmnetWd->setButtonSymbols(QAbstractSpinBox::NoButtons);
+    spinMmnetWd->setKeyboardTracking(true);
     // 布局
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->addWidget(labelTitle);
