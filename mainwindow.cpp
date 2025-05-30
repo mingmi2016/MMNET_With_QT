@@ -289,13 +289,56 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
     if (success) {
         ui->progressBar_step2->setValue(100);
     }
+    // 解析step2.log最后一行的决定系数
+    QString step2LogPath = QDir::currentPath() + "/MMNET/step2.log";
+    QString lastLine;
+    QFile step2Log(step2LogPath);
+    if (step2Log.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&step2Log);
+        while (!in.atEnd()) {
+            QString line = in.readLine();
+            if (!line.trimmed().isEmpty()) lastLine = line;
+        }
+        step2Log.close();
+    }
+    qDebug() << "[Debug] step2.log lastLine:" << lastLine;
+    QString trainR2, valR2;
+    QRegularExpression reTrain("train_R2\\s*=\\s*([\\d\\.\\-eE]+)");
+    QRegularExpression reVal("val_R2\\s*=\\s*([\\d\\.\\-eE]+)");
+    auto mTrain = reTrain.match(lastLine);
+    auto mVal = reVal.match(lastLine);
+    if (mTrain.hasMatch()) trainR2 = mTrain.captured(1);
+    if (mVal.hasMatch()) valR2 = mVal.captured(1);
+    qDebug() << "[Debug] trainR2:" << trainR2 << ", valR2:" << valR2;
+    QString r2Msg;
+    if (!trainR2.isEmpty() && !valR2.isEmpty()) {
+        r2Msg = QString("\n决定系数 R²：训练集 %1，验证集 %2").arg(trainR2).arg(valR2);
+    } else {
+        r2Msg = "\n决定系数 R²：未能解析到train_R2/val_R2";
+    }
     // 失败时不强制100%，保留最后进度
-    QString timeMsg = QString("\n本次运行耗时：%1 秒\n第一步: %2 秒\n第二步: %3 秒").arg(seconds, 0, 'f', 2).arg(exe1Seconds, 0, 'f', 2).arg(exe2Seconds, 0, 'f', 2);
+    QString timeMsg;
+    auto formatTime = [](double t) {
+        if (t >= 60.0) return QString("%1 分钟").arg(t / 60.0, 0, 'f', 2);
+        else return QString("%1 秒").arg(t, 0, 'f', 2);
+    };
+    if (seconds >= 60.0) {
+        double minutes = seconds / 60.0;
+        timeMsg = QString("\n本次运行耗时：%1\n第一步: %2\n第二步: %3")
+            .arg(QString::number(minutes, 'f', 2) + " 分钟")
+            .arg(formatTime(exe1Seconds))
+            .arg(formatTime(exe2Seconds));
+    } else {
+        timeMsg = QString("\n本次运行耗时：%1\n第一步: %2\n第二步: %3")
+            .arg(formatTime(seconds))
+            .arg(formatTime(exe1Seconds))
+            .arg(formatTime(exe2Seconds));
+    }
     MyMessageBox msgBox(this);
-    msgBox.setMySize(300, 150);
+    msgBox.setMySize(400, 220);
     msgBox.setIcon(success ? QMessageBox::Information : QMessageBox::Warning);
     msgBox.setWindowTitle(success ? tr("运行完成") : tr("错误"));
-    msgBox.setText(msg + timeMsg);
+    msgBox.setText(msg + timeMsg + r2Msg);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 
@@ -340,25 +383,33 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
         QTextStream out(&logFile);
         out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ", ";
         out << (success ? "成功" : "失败") << ", ";
-        out << "总耗时: " << seconds << "秒, ";
-        
+        // 优化耗时单位
+        auto formatTimeLog = [](double t) {
+            if (t >= 60.0) return QString("%1 分钟").arg(t / 60.0, 0, 'f', 2);
+            else return QString("%1 秒").arg(t, 0, 'f', 2);
+        };
+        out << "总耗时: " << formatTimeLog(seconds) << ", ";
         // 详细时间记录
         if (!step1Start.isNull() && !step1End.isNull()) {
             out << "第一步开始: " << step1Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
             out << "第一步结束: " << step1End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
         }
-        out << "第一步耗时: " << exe1Seconds << "秒, ";
-        
+        out << "第一步耗时: " << formatTimeLog(exe1Seconds) << ", ";
         if (!step2Start.isNull() && !step2End.isNull()) {
             out << "第二步开始: " << step2Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
             out << "第二步结束: " << step2End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
         }
-        out << "第二步耗时: " << exe2Seconds << "秒, ";
-        
+        out << "第二步耗时: " << formatTimeLog(exe2Seconds) << ", ";
         out << "GPU: " << gpuName << ", ";
         out << "ESN epoch: " << esnEpoch << ", MMNET epoch: " << mmnetEpoch << ", ";
         out << "gene目录: " << QString::number(geneSize, 'f', 2) << " MB, ";
-        out << "phen目录: " << QString::number(phenSize, 'f', 2) << " MB\n";
+        out << "phen目录: " << QString::number(phenSize, 'f', 2) << " MB";
+        if (!trainR2.isEmpty() && !valR2.isEmpty()) {
+            out << ", train_R2: " << trainR2 << ", val_R2: " << valR2;
+        } else {
+            out << ", train_R2/val_R2未能解析";
+        }
+        out << "\n";
         logFile.close();
     }
 }
