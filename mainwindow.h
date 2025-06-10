@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QButtonGroup>
 #include <QRadioButton>
+#include <QCheckBox>
 #include "savedsettingdialog.h"
 
 QT_BEGIN_NAMESPACE
@@ -64,9 +65,9 @@ private:
     void uploadFiles(const QString &targetDir, const QString &fileType);
     bool isValidFileFormat(const QString &fileName);
 
-    // phenotype单选组相关
-    QButtonGroup *phenotypeGroup = nullptr;
-    QString selectedPhenotype;
+    // phenotype多选相关
+    QList<QCheckBox*> phenotypeCheckBoxes;
+    QStringList selectedPhenotypes;
     void refreshPhenotypeOptions();
 
     // 防止重复运行step2
@@ -74,5 +75,17 @@ private:
 
     // 添加：保存saved值到json的辅助函数
     bool updateSavedValue(const QString &jsonPath, const QString &phenotype, int savedValue);
+
+    // --- 新增：多表型参数弹窗重构相关 ---
+    QStringList pendingPhenotypes; // 待处理的表型队列
+    struct PhenotypeSetting {
+        int esnBatch, esnSaved;
+        double esnP;
+        int mmnetBatch, mmnetSaved;
+        double mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetWd;
+    };
+    QMap<QString, PhenotypeSetting> phenotypeSettings; // 每个表型的参数
+    void showNextSettingDialog(); // 弹出下一个参数设置对话框
+    void startTrainingForPhenotypes(); // 所有参数设置完毕后统一训练
 };
 #endif // MAINWINDOW_H
