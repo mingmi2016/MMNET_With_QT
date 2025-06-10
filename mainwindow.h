@@ -87,5 +87,16 @@ private:
     QMap<QString, PhenotypeSetting> phenotypeSettings; // 每个表型的参数
     void showNextSettingDialog(); // 弹出下一个参数设置对话框
     void startTrainingForPhenotypes(); // 所有参数设置完毕后统一训练
+
+    // --- 新增：多表型训练/预测统一弹框 ---
+    QStringList trainPhenoQueue; // 训练表型队列
+    QList<QString> trainResultMsgs; // 训练结果信息
+    void trainNextPhenotype(); // 训练下一个表型
+    void showTrainSummary(); // 训练全部完成后弹框
+
+    QStringList predictPhenoQueue; // 预测表型队列
+    QList<QString> predictResultMsgs; // 预测结果信息
+    void predictNextPhenotype(); // 预测下一个表型
+    void showPredictSummary(); // 预测全部完成后弹框
 };
 #endif // MAINWINDOW_H

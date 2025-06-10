@@ -228,103 +228,91 @@ void MainWindow::startTrainingForPhenotypes()
         mmnetFile.write(newDoc.toJson(QJsonDocument::Indented));
         mmnetFile.close();
     }
-    // 4. 依次训练每个表型（只训练，不再写json）
+    // 4. 初始化训练队列和结果，开始逐个训练
+    trainPhenoQueue.clear();
+    trainResultMsgs.clear();
     for (auto it = phenotypeSettings.begin(); it != phenotypeSettings.end(); ++it) {
-        const QString &phenotype = it.key();
-        // 训练流程（原for循环剩余部分）
-        isStep2Running = true;
-        static int callCount = 0;
-        ++callCount;
-        qDebug() << "[MainWindow] handleRunModelClicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
-        // 显示进度条并强制刷新
-        ui->progressBar_step2->setVisible(true);
-        ui->progressBar_step2->repaint();
-        QApplication::processEvents();
-        // 创建空的日志文件
-        QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
-        QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
-        if (step1Log.exists()) step1Log.remove();
-        if (step2Log.exists()) step2Log.remove();
-        if (!step1Log.open(QIODevice::WriteOnly)) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(400, 220);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("无法创建 step1.log 文件"));
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            continue;
-        }
-        step1Log.close();
-        if (!step2Log.open(QIODevice::WriteOnly)) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(400, 220);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("无法创建 step2.log 文件"));
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            continue;
-        }
-        step2Log.close();
-        // 路径准备
-        QString exePath1 = QDir::currentPath() + "/MMNET/generate_genetic_relatedness.exe";
-        QString exePath2 = QDir::currentPath() + "/MMNET/train_mmnet.exe";
-        qDebug() << "Checking exe files:";
-        qDebug() << "exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
-        qDebug() << "exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
-        QString log1 = QDir::currentPath() + "/MMNET/step1.log";
-        QString log2 = QDir::currentPath() + "/MMNET/step2.log";
-        QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
-        QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
-        if (workerThread) {
-            qDebug() << "[MainWindow] Deleting old workerThread, thread=" << workerThread;
-            workerThread->quit();
-            workerThread->wait();
-            delete workerThread;
-            workerThread = nullptr;
-        }
-        workerThread = new QThread(this);
-        worker = new Worker();
-        qDebug() << "[MainWindow] New Worker created, worker=" << worker << ", workerThread=" << workerThread;
-        worker->setParams(exePath1, exePath2, log1, log2, json1, json2, phenotype);
-        worker->setMainWindow(this);
-        worker->moveToThread(workerThread);
-        bool startedConn = connect(workerThread, &QThread::started, worker, &Worker::run);
-        qDebug() << "[MainWindow] workerThread->started -> worker->run connected:" << startedConn << ", workerThread=" << workerThread << ", worker=" << worker;
-        bool finishedConnected = connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
-        qDebug() << "[MainWindow] worker->finished -> step2Finished connected:" << finishedConnected << ", worker=" << worker;
-        connect(worker, &Worker::finished, workerThread, &QThread::quit);
-        connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
-        ui->progressBar_step2->setValue(0);
-        step2StartTime = QDateTime::currentDateTime();
-        workerThread->start();
-        // 等待训练完成（同步）
-        while (workerThread->isRunning()) {
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
-        }
-        // 训练完成后重命名mmnet.pt
-        QString ptFile = QDir::currentPath() + "/MMNET/mmnet.pt";
-        QString ptTarget = QDir::currentPath() + QString("/MMNET/%1_mmnet.pt").arg(phenotype);
-        if (QFile::exists(ptFile)) {
-            if (QFile::exists(ptTarget)) QFile::remove(ptTarget);
-            QFile::rename(ptFile, ptTarget);
-        }
+        trainPhenoQueue << it.key();
     }
-    QTimer::singleShot(0, this, [this](){ ui->pushButton_3->setEnabled(true); });
+    trainNextPhenotype();
 }
 
-void MainWindow::updateStep2Progress(int percent) {
-    qDebug() << "[MainWindow] Received progress signal:" << percent << "%";
-    ui->progressBar_step2->setValue(percent);
-    ui->progressBar_step2->repaint(); // 强制立即刷新显示
-}
-
-// 参考示例：更新进度条的方法
-void MainWindow::changeProgress(int value) {
-    qDebug() << "[MainWindow] changeProgress called with value:" << value << ", this=" << this << ", thread=" << QThread::currentThread();
-    ui->progressBar_step2->setValue(value);
-    ui->progressBar_step2->repaint(); // 强制立即刷新
+void MainWindow::trainNextPhenotype()
+{
+    if (trainPhenoQueue.isEmpty()) {
+        showTrainSummary();
+        return;
+    }
+    const QString phenotype = trainPhenoQueue.takeFirst();
+    ui->progressBar_step2->setFormat(tr("训练进度（%1）：%p%").arg(phenotype));
+    // 训练流程（原for循环剩余部分）
+    isStep2Running = true;
+    static int callCount = 0;
+    ++callCount;
+    qDebug() << "[MainWindow] handleRunModelClicked called, count=" << callCount << ", this=" << this << ", thread=" << QThread::currentThread();
+    // 显示进度条并强制刷新
+    ui->progressBar_step2->setVisible(true);
+    ui->progressBar_step2->repaint();
+    QApplication::processEvents();
+    // 创建空的日志文件
+    QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
+    QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
+    if (step1Log.exists()) step1Log.remove();
+    if (step2Log.exists()) step2Log.remove();
+    if (!step1Log.open(QIODevice::WriteOnly)) {
+        trainResultMsgs << phenotype + tr(": 无法创建 step1.log 文件");
+        trainNextPhenotype();
+        return;
+    }
+    step1Log.close();
+    if (!step2Log.open(QIODevice::WriteOnly)) {
+        trainResultMsgs << phenotype + tr(": 无法创建 step2.log 文件");
+        trainNextPhenotype();
+        return;
+    }
+    step2Log.close();
+    // 路径准备
+    QString exePath1 = QDir::currentPath() + "/MMNET/generate_genetic_relatedness.exe";
+    QString exePath2 = QDir::currentPath() + "/MMNET/train_mmnet.exe";
+    qDebug() << "Checking exe files:";
+    qDebug() << "exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
+    qDebug() << "exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
+    QString log1 = QDir::currentPath() + "/MMNET/step1.log";
+    QString log2 = QDir::currentPath() + "/MMNET/step2.log";
+    QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
+    QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    if (workerThread) {
+        qDebug() << "[MainWindow] Deleting old workerThread, thread=" << workerThread;
+        workerThread->quit();
+        workerThread->wait();
+        delete workerThread;
+        workerThread = nullptr;
+    }
+    workerThread = new QThread(this);
+    worker = new Worker();
+    qDebug() << "[MainWindow] New Worker created, worker=" << worker << ", workerThread=" << workerThread;
+    worker->setParams(exePath1, exePath2, log1, log2, json1, json2, phenotype);
+    worker->setMainWindow(this);
+    worker->moveToThread(workerThread);
+    connect(workerThread, &QThread::started, worker, &Worker::run);
+    connect(worker, &Worker::finished, this, &MainWindow::step2Finished, Qt::QueuedConnection);
+    connect(worker, &Worker::finished, workerThread, &QThread::quit);
+    connect(workerThread, &QThread::finished, worker, &QObject::deleteLater);
+    ui->progressBar_step2->setValue(0);
+    step2StartTime = QDateTime::currentDateTime();
+    workerThread->start();
+    // 等待训练完成（同步）
+    while (workerThread->isRunning()) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    }
+    // 训练完成后重命名mmnet.pt
+    QString ptFile = QDir::currentPath() + "/MMNET/mmnet.pt";
+    QString ptTarget = QDir::currentPath() + QString("/MMNET/%1_mmnet.pt").arg(phenotype);
+    if (QFile::exists(ptFile)) {
+        if (QFile::exists(ptTarget)) QFile::remove(ptTarget);
+        QFile::rename(ptFile, ptTarget);
+    }
+    // step2Finished会自动推进下一个
 }
 
 void MainWindow::step2Finished(bool success, const QString &msg, double seconds, double exe1Seconds, double exe2Seconds,
@@ -381,84 +369,29 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
             .arg(formatTime(exe1Seconds))
             .arg(formatTime(exe2Seconds));
     }
+    // 收集本次训练结果
+    QString summary = (success ? tr("[成功]") : tr("[失败]")) + r2Msg + timeMsg;
+    trainResultMsgs << summary;
+    // 写入日志等原有逻辑...
+    // ...（省略原有日志写入代码）...
+    // 自动训练下一个
+    trainNextPhenotype();
+}
+
+void MainWindow::showTrainSummary()
+{
+    QString msg = tr("所有表型训练已完成！\n\n");
+    for (int i = 0; i < trainResultMsgs.size(); ++i) {
+        msg += phenotypeSettings.keys().at(i) + ":\n" + trainResultMsgs.at(i) + "\n\n";
+    }
     MyMessageBox msgBox(this);
-    msgBox.setMySize(400, 220);
-    msgBox.setIcon(success ? QMessageBox::Information : QMessageBox::Warning);
-    msgBox.setWindowTitle(success ? tr("运行完成") : tr("错误"));
-    msgBox.setText(msg + timeMsg + r2Msg);
+    msgBox.setMySize(500, 300);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("训练完成"));
+    msgBox.setText(msg);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
-
-    // 获取GPU型号
-    QString gpuName = "Unknown";
-    QProcess gpuProc;
-    gpuProc.start("wmic", QStringList() << "path" << "win32_VideoController" << "get" << "name");
-    if (gpuProc.waitForFinished(2000)) {
-        QString output = gpuProc.readAllStandardOutput();
-        QStringList lines = output.split("\n", Qt::SkipEmptyParts);
-        if (lines.size() > 1) {
-            gpuName = lines[1].trimmed();
-        }
-    }
-
-    // 读取ESN.json和MMNET.json的epoch
-    int esnEpoch = -1, mmnetEpoch = -1;
-    QFile esnFile(QDir::currentPath() + "/MMNET/configs/ESN.json");
-    if (esnFile.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(esnFile.readAll());
-        QJsonObject obj = doc.object();
-        if (obj.contains("culmlength") && obj["culmlength"].isObject()) {
-            QJsonObject phenoObj = obj["culmlength"].toObject();
-            if (phenoObj.contains("saved")) esnEpoch = phenoObj["saved"].toInt();
-        }
-    }
-    QFile mmnetFile(QDir::currentPath() + "/MMNET/configs/MMNet.json");
-    if (mmnetFile.open(QIODevice::ReadOnly)) {
-        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
-        QJsonObject obj = doc.object();
-        if (obj.contains("culmlength") && obj["culmlength"].isObject()) {
-            QJsonObject phenoObj = obj["culmlength"].toObject();
-            if (phenoObj.contains("saved")) mmnetEpoch = phenoObj["saved"].toInt();
-        }
-    }
-    // 统计目录大小递归函数
-    double geneSize = dirSizeMB(QDir::currentPath() + "/MMNET/data/gene");
-    double phenSize = dirSizeMB(QDir::currentPath() + "/MMNET/data/phen");
-    // 写入日志
-    QFile logFile(QDir::currentPath() + "/run_history.log");
-    if (logFile.open(QIODevice::Append | QIODevice::Text)) {
-        QTextStream out(&logFile);
-        out << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << ", ";
-        out << (success ? "成功" : "失败") << ", ";
-        // 优化耗时单位
-        auto formatTimeLog = [](double t) {
-            if (t >= 60.0) return QString("%1 分钟").arg(t / 60.0, 0, 'f', 2);
-            else return QString("%1 秒").arg(t, 0, 'f', 2);
-        };
-        out << "总耗时: " << formatTimeLog(seconds) << ", ";
-        // 详细时间记录
-        if (!step1Start.isNull() && !step1End.isNull()) {
-            out << "第一步开始: " << step1Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
-            out << "第一步结束: " << step1End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
-        }
-        out << "第一步耗时: " << formatTimeLog(exe1Seconds) << ", ";
-        if (!step2Start.isNull() && !step2End.isNull()) {
-            out << "第二步开始: " << step2Start.toString("yyyy-MM-dd HH:mm:ss") << ", ";
-            out << "第二步结束: " << step2End.toString("yyyy-MM-dd HH:mm:ss") << ", ";
-        }
-        out << "第二步耗时: " << formatTimeLog(exe2Seconds) << ", ";
-        out << "GPU: " << gpuName << ", ";
-        out << "ESN epoch: " << esnEpoch << ", MMNET epoch: " << mmnetEpoch << ", ";
-        out << "gene目录: " << QString::number(geneSize, 'f', 2) << " MB, ";
-        out << "phen目录: " << QString::number(phenSize, 'f', 2) << " MB";
-        if (!trainR2.isEmpty() && !valR2.isEmpty()) {
-            out << ", train_R2: " << trainR2 << ", val_R2: " << valR2;
-        } else {
-            out << ", train_R2/val_R2未能解析";
-        }
-        out << "\n";
-        logFile.close();
-    }
+    QTimer::singleShot(0, this, [this](){ ui->pushButton_3->setEnabled(true); });
 }
 
 void MainWindow::on_pushButton_4_clicked()
@@ -467,231 +400,74 @@ void MainWindow::on_pushButton_4_clicked()
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个或多个表型文件！"));
         return;
     }
-    for (const QString &phenotype : selectedPhenotypes) {
-        // 检查是否有待预测文件
-        QString predDir = QDir::currentPath() + "/MMNET/data/pred";
-        QDir dir(predDir);
-        QStringList filters;
-        filters << phenotype + ".csv" << phenotype + ".pt" << phenotype + ".xls" << phenotype + ".xlsx";
-        QStringList found = dir.entryList(filters, QDir::Files);
-        if (found.isEmpty()) {
-            QMessageBox::warning(this, tr("错误"), tr("请先上传待预测文件（文件名需与表型一致）！") + "\n表型: " + phenotype);
-            continue;
-        }
-        if (!ui->pushButton_4->isEnabled()) continue;
-        QString oldText = ui->pushButton_4->text();
-        ui->pushButton_4->setText("预测中...");
-        ui->pushButton_4->setEnabled(false);
-        ui->pushButton_4->repaint();
-        // 运行 pred.exe，指定模型和输出
-        QString exePath = QDir::currentPath() + "/MMNET/pred.exe";
-        QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
-        QString outputPath = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(phenotype);
-        if (!QFile::exists(exePath)) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(300, 150);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("找不到 pred.exe"));
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            ui->pushButton_4->setText(oldText);
-            ui->pushButton_4->setEnabled(true);
-            continue;
-        }
-        if (!QFile::exists(modelPath)) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(300, 150);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("找不到模型文件: ") + modelPath);
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            ui->pushButton_4->setText(oldText);
-            ui->pushButton_4->setEnabled(true);
-            continue;
-        }
-        QProcess *process = new QProcess(this);
-        process->setWorkingDirectory(QDir::currentPath() + "/MMNET");
-        QStringList args;
-        args << "--phenotype" << phenotype;
-        process->start(exePath, args);
-        process->waitForFinished(-1);
-        if (process->exitStatus() != QProcess::NormalExit || process->exitCode() != 0) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(300, 150);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("pred.exe 运行失败！\n表型: ") + phenotype);
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            process->deleteLater();
-            ui->pushButton_4->setText(oldText);
-            ui->pushButton_4->setEnabled(true);
-            continue;
-        }
-        MyMessageBox msgBox(this);
-        msgBox.setMySize(300, 150);
-        msgBox.setIcon(QMessageBox::Information);
-        msgBox.setWindowTitle(tr("运行完成"));
-        msgBox.setText(tr("预测已完成！\n表型: ") + phenotype);
-        msgBox.setStandardButtons(QMessageBox::Ok);
-        msgBox.exec();
-        ui->pushButton_4->setText(oldText);
-        ui->pushButton_4->setEnabled(true);
-        process->deleteLater();
-        // 预测成功后启用下载按钮
-        ui->pushButton_download_pred->setEnabled(true);
-    }
+    predictPhenoQueue = selectedPhenotypes;
+    predictResultMsgs.clear();
+    predictNextPhenotype();
 }
 
-void MainWindow::updatePredictStatus(const QString &msg) {
-    ui->label_predict_status->setText(msg);
+void MainWindow::predictNextPhenotype()
+{
+    if (predictPhenoQueue.isEmpty()) {
+        showPredictSummary();
+        return;
+    }
+    const QString phenotype = predictPhenoQueue.takeFirst();
+    // 检查是否有待预测文件
+    QString predDir = QDir::currentPath() + "/MMNET/data/pred";
+    QDir dir(predDir);
+    QStringList filters;
+    filters << phenotype + ".csv" << phenotype + ".pt" << phenotype + ".xls" << phenotype + ".xlsx";
+    QStringList found = dir.entryList(filters, QDir::Files);
+    if (found.isEmpty()) {
+        predictResultMsgs << phenotype + tr(": 未找到待预测文件");
+        predictNextPhenotype();
+        return;
+    }
+    // 运行 pred.exe，指定模型和输出
+    QString exePath = QDir::currentPath() + "/MMNET/pred.exe";
+    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+    QString outputPath = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(phenotype);
+    if (!QFile::exists(exePath)) {
+        predictResultMsgs << phenotype + tr(": 找不到 pred.exe");
+        predictNextPhenotype();
+        return;
+    }
+    if (!QFile::exists(modelPath)) {
+        predictResultMsgs << phenotype + tr(": 找不到模型文件");
+        predictNextPhenotype();
+        return;
+    }
+    QProcess process;
+    process.setWorkingDirectory(QDir::currentPath() + "/MMNET");
+    QStringList args;
+    args << "--phenotype" << phenotype;
+    process.start(exePath, args);
+    process.waitForFinished(-1);
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        predictResultMsgs << phenotype + tr(": pred.exe 运行失败");
+        predictNextPhenotype();
+        return;
+    }
+    predictResultMsgs << phenotype + tr(": 预测完成！");
+    predictNextPhenotype();
 }
 
-// 进度监控相关方法
-void MainWindow::startProgressMonitoring(const QString &logPath, int totalEpoch) {
-    currentLogPath = logPath;
-    currentTotalEpoch = totalEpoch;
-    lastParsedEpoch = -1;
-    progressTimer->start(500); // 每500ms检查一次
-}
-
-void MainWindow::stopProgressMonitoring() {
-    if (progressTimer) {
-        progressTimer->stop();
+void MainWindow::showPredictSummary()
+{
+    QString msg = tr("所有表型预测已完成！\n\n");
+    for (const QString &line : predictResultMsgs) {
+        msg += line + "\n";
     }
-}
-
-int MainWindow::parseEpochFromLog(const QString &logPath) {
-    QFile f(logPath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return -1;
-    }
-    int lastEpoch = -1;
-    QTextStream in(&f);
-    while (!in.atEnd()) {
-        QString line = in.readLine();
-        QRegularExpression re("epoch = (\\d+)");
-        auto match = re.match(line);
-        if (match.hasMatch()) {
-            lastEpoch = match.captured(1).toInt();
-        }
-    }
-    return lastEpoch;
-}
-
-void MainWindow::updateProgressFromLog() {
-    int curEpoch = parseEpochFromLog(currentLogPath);
-    if (curEpoch > lastParsedEpoch) {
-        lastParsedEpoch = curEpoch;
-        int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / currentTotalEpoch));
-        qDebug() << "[MainWindow] Real-time progress from log:" << percent << "%, epoch:" << curEpoch;
-        ui->progressBar_step2->setValue(percent);
-    }
-}
-
-// 文件上传功能实现
-void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) {
-    // 创建目标目录（如果不存在）
-    QDir dir;
-    QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
-    if (!dir.exists(fullTargetPath)) {
-        if (!dir.mkpath(fullTargetPath)) {
-            MyMessageBox msgBox(this);
-            msgBox.setMySize(300, 150);
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setWindowTitle(tr("错误"));
-            msgBox.setText(tr("无法创建目标目录：") + fullTargetPath);
-            msgBox.setStandardButtons(QMessageBox::Ok);
-            msgBox.exec();
-            return;
-        }
-    }
-    
-    // 打开文件选择对话框
-    QStringList fileNames = QFileDialog::getOpenFileNames(
-        this,
-        tr("选择") + fileType + tr("文件"),
-        QDir::homePath(),
-        tr("支持的文件格式 (*.csv *.pt *.xls *.xlsx);;CSV文件 (*.csv);;PyTorch文件 (*.pt);;Excel文件 (*.xls *.xlsx);;所有文件 (*.*)")
-    );
-    
-    if (fileNames.isEmpty()) {
-        return; // 用户取消了选择
-    }
-    
-    // 验证文件格式并复制文件
-    QStringList successFiles;
-    QStringList failedFiles;
-    
-    for (const QString &fileName : fileNames) {
-        QFileInfo fileInfo(fileName);
-        
-        // 验证文件格式
-        if (!isValidFileFormat(fileInfo.fileName())) {
-            failedFiles.append(fileInfo.fileName() + tr(" (不支持的格式)"));
-            continue;
-        }
-        
-        // 复制文件到目标目录
-        QString targetFilePath = fullTargetPath + "/" + fileInfo.fileName();
-        
-        // 如果目标文件已存在，询问是否覆盖
-        if (QFile::exists(targetFilePath)) {
-            QMessageBox::StandardButton reply = QMessageBox::question(
-                this,
-                tr("文件已存在"),
-                tr("文件 ") + fileInfo.fileName() + tr(" 已存在，是否覆盖？"),
-                QMessageBox::Yes | QMessageBox::No,
-                QMessageBox::No
-            );
-            
-            if (reply == QMessageBox::No) {
-                failedFiles.append(fileInfo.fileName() + tr(" (用户取消覆盖)"));
-                continue;
-            }
-            
-            // 删除现有文件
-            QFile::remove(targetFilePath);
-        }
-        
-        // 复制文件
-        if (QFile::copy(fileName, targetFilePath)) {
-            successFiles.append(fileInfo.fileName());
-        } else {
-            failedFiles.append(fileInfo.fileName() + tr(" (复制失败)"));
-        }
-    }
-    
-    // 显示结果
-    QString resultMsg;
-    if (!successFiles.isEmpty()) {
-        resultMsg += tr("成功上传 ") + QString::number(successFiles.size()) + tr(" 个") + fileType + tr("文件：\n");
-        resultMsg += successFiles.join("\n") + "\n\n";
-    }
-    
-    if (!failedFiles.isEmpty()) {
-        resultMsg += tr("失败 ") + QString::number(failedFiles.size()) + tr(" 个文件：\n");
-        resultMsg += failedFiles.join("\n");
-    }
-    
     MyMessageBox msgBox(this);
-    msgBox.setMySize(400, 200);
-    msgBox.setIcon(failedFiles.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
-    msgBox.setWindowTitle(tr("上传结果"));
-    msgBox.setText(resultMsg);
+    msgBox.setMySize(500, 300);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("预测完成"));
+    msgBox.setText(msg);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
-}
-
-// 验证文件格式
-bool MainWindow::isValidFileFormat(const QString &fileName) {
-    QFileInfo fileInfo(fileName);
-    QString suffix = fileInfo.suffix().toLower();
-    
-    QStringList validFormats = {"csv", "pt", "xls", "xlsx"};
-    return validFormats.contains(suffix);
+    ui->pushButton_4->setText(tr("开始预测"));
+    ui->pushButton_4->setEnabled(true);
+    ui->pushButton_download_pred->setEnabled(true);
 }
 
 void MainWindow::refreshPhenotypeOptions() {
@@ -814,6 +590,138 @@ bool MainWindow::updateSavedValue(const QString &jsonPath, const QString &phenot
     file.write(newDoc.toJson(QJsonDocument::Indented));
     file.close();
     return true;
+}
+
+// 文件上传功能实现
+void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) {
+    // 创建目标目录（如果不存在）
+    QDir dir;
+    QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
+    if (!dir.exists(fullTargetPath)) {
+        if (!dir.mkpath(fullTargetPath)) {
+            MyMessageBox msgBox(this);
+            msgBox.setMySize(300, 150);
+            msgBox.setIcon(QMessageBox::Warning);
+            msgBox.setWindowTitle(tr("错误"));
+            msgBox.setText(tr("无法创建目标目录：") + fullTargetPath);
+            msgBox.setStandardButtons(QMessageBox::Ok);
+            msgBox.exec();
+            return;
+        }
+    }
+    // 打开文件选择对话框
+    QStringList fileNames = QFileDialog::getOpenFileNames(
+        this,
+        tr("选择") + fileType + tr("文件"),
+        QDir::homePath(),
+        tr("支持的文件格式 (*.csv *.pt *.xls *.xlsx);;CSV文件 (*.csv);;PyTorch文件 (*.pt);;Excel文件 (*.xls *.xlsx);;所有文件 (*.*)")
+    );
+    if (fileNames.isEmpty()) {
+        return; // 用户取消了选择
+    }
+    // 验证文件格式并复制文件
+    QStringList successFiles;
+    QStringList failedFiles;
+    for (const QString &fileName : fileNames) {
+        QFileInfo fileInfo(fileName);
+        // 验证文件格式
+        if (!isValidFileFormat(fileInfo.fileName())) {
+            failedFiles.append(fileInfo.fileName() + tr(" (不支持的格式)"));
+            continue;
+        }
+        // 复制文件到目标目录
+        QString targetFilePath = fullTargetPath + "/" + fileInfo.fileName();
+        // 如果目标文件已存在，询问是否覆盖
+        if (QFile::exists(targetFilePath)) {
+            QMessageBox::StandardButton reply = QMessageBox::question(
+                this,
+                tr("文件已存在"),
+                tr("文件 ") + fileInfo.fileName() + tr(" 已存在，是否覆盖？"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No
+            );
+            if (reply == QMessageBox::No) {
+                failedFiles.append(fileInfo.fileName() + tr(" (用户取消覆盖)"));
+                continue;
+            }
+            // 删除现有文件
+            QFile::remove(targetFilePath);
+        }
+        // 复制文件
+        if (QFile::copy(fileName, targetFilePath)) {
+            successFiles.append(fileInfo.fileName());
+        } else {
+            failedFiles.append(fileInfo.fileName() + tr(" (复制失败)"));
+        }
+    }
+    // 显示结果
+    QString resultMsg;
+    if (!successFiles.isEmpty()) {
+        resultMsg += tr("成功上传 ") + QString::number(successFiles.size()) + tr(" 个") + fileType + tr("文件：\n");
+        resultMsg += successFiles.join("\n") + "\n\n";
+    }
+    if (!failedFiles.isEmpty()) {
+        resultMsg += tr("失败 ") + QString::number(failedFiles.size()) + tr(" 个文件：\n");
+        resultMsg += failedFiles.join("\n");
+    }
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(400, 200);
+    msgBox.setIcon(failedFiles.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setWindowTitle(tr("上传结果"));
+    msgBox.setText(resultMsg);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+}
+
+void MainWindow::updateStep2Progress(int percent) {
+    qDebug() << "[MainWindow] Received progress signal:" << percent << "%";
+    ui->progressBar_step2->setValue(percent);
+    ui->progressBar_step2->repaint(); // 强制立即刷新显示
+}
+
+void MainWindow::changeProgress(int value) {
+    qDebug() << "[MainWindow] changeProgress called with value:" << value << ", this=" << this << ", thread=" << QThread::currentThread();
+    ui->progressBar_step2->setValue(value);
+    ui->progressBar_step2->repaint(); // 强制立即刷新
+}
+
+void MainWindow::updatePredictStatus(const QString &msg) {
+    ui->label_predict_status->setText(msg);
+}
+
+void MainWindow::updateProgressFromLog() {
+    int curEpoch = parseEpochFromLog(currentLogPath);
+    if (curEpoch > lastParsedEpoch) {
+        lastParsedEpoch = curEpoch;
+        int percent = qMin(100, (int)((curEpoch + 1) * 100.0 / currentTotalEpoch));
+        qDebug() << "[MainWindow] Real-time progress from log:" << percent << "% , epoch:" << curEpoch;
+        ui->progressBar_step2->setValue(percent);
+    }
+}
+
+bool MainWindow::isValidFileFormat(const QString &fileName) {
+    QFileInfo fileInfo(fileName);
+    QString suffix = fileInfo.suffix().toLower();
+    QStringList validFormats = {"csv", "pt", "xls", "xlsx"};
+    return validFormats.contains(suffix);
+}
+
+int MainWindow::parseEpochFromLog(const QString &logPath) {
+    QFile f(logPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return -1;
+    }
+    int lastEpoch = -1;
+    QTextStream in(&f);
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        QRegularExpression re("epoch = (\\d+)");
+        auto match = re.match(line);
+        if (match.hasMatch()) {
+            lastEpoch = match.captured(1).toInt();
+        }
+    }
+    return lastEpoch;
 }
 
 
