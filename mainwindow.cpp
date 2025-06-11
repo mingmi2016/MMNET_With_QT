@@ -400,6 +400,9 @@ void MainWindow::on_pushButton_4_clicked()
         QMessageBox::warning(this, tr("错误"), tr("请先选择一个或多个表型文件！"));
         return;
     }
+    // 优化：点击后立即显示"预测中..."并禁用按钮，防止重复点击
+    ui->pushButton_4->setText(tr("预测中..."));
+    ui->pushButton_4->setEnabled(false);
     predictPhenoQueue = selectedPhenotypes;
     predictResultMsgs.clear();
     predictNextPhenotype();
@@ -411,45 +414,50 @@ void MainWindow::predictNextPhenotype()
         showPredictSummary();
         return;
     }
-    const QString phenotype = predictPhenoQueue.takeFirst();
+    currentPredictPhenotype = predictPhenoQueue.takeFirst();
     // 检查是否有待预测文件
     QString predDir = QDir::currentPath() + "/MMNET/data/pred";
     QDir dir(predDir);
     QStringList filters;
-    filters << phenotype + ".csv" << phenotype + ".pt" << phenotype + ".xls" << phenotype + ".xlsx";
+    filters << currentPredictPhenotype + ".csv" << currentPredictPhenotype + ".pt" << currentPredictPhenotype + ".xls" << currentPredictPhenotype + ".xlsx";
     QStringList found = dir.entryList(filters, QDir::Files);
     if (found.isEmpty()) {
-        predictResultMsgs << phenotype + tr(": 未找到待预测文件");
-        predictNextPhenotype();
+        predictResultMsgs << currentPredictPhenotype + tr(": 未找到待预测文件");
+        QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
         return;
     }
     // 运行 pred.exe，指定模型和输出
     QString exePath = QDir::currentPath() + "/MMNET/pred.exe";
-    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
-    QString outputPath = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(phenotype);
+    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(currentPredictPhenotype);
+    QString outputPath = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(currentPredictPhenotype);
     if (!QFile::exists(exePath)) {
-        predictResultMsgs << phenotype + tr(": 找不到 pred.exe");
-        predictNextPhenotype();
+        predictResultMsgs << currentPredictPhenotype + tr(": 找不到 pred.exe");
+        QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
         return;
     }
     if (!QFile::exists(modelPath)) {
-        predictResultMsgs << phenotype + tr(": 找不到模型文件");
-        predictNextPhenotype();
+        predictResultMsgs << currentPredictPhenotype + tr(": 找不到模型文件");
+        QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
         return;
     }
-    QProcess process;
-    process.setWorkingDirectory(QDir::currentPath() + "/MMNET");
+    // 异步QProcess
+    if (predictProcess) {
+        predictProcess->deleteLater();
+        predictProcess = nullptr;
+    }
+    predictProcess = new QProcess(this);
+    predictProcess->setWorkingDirectory(QDir::currentPath() + "/MMNET");
     QStringList args;
-    args << "--phenotype" << phenotype;
-    process.start(exePath, args);
-    process.waitForFinished(-1);
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
-        predictResultMsgs << phenotype + tr(": pred.exe 运行失败");
-        predictNextPhenotype();
-        return;
-    }
-    predictResultMsgs << phenotype + tr(": 预测完成！");
-    predictNextPhenotype();
+    args << "--phenotype" << currentPredictPhenotype;
+    connect(predictProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (exitStatus != QProcess::NormalExit || exitCode != 0) {
+            predictResultMsgs << currentPredictPhenotype + tr(": pred.exe 运行失败");
+        } else {
+            predictResultMsgs << currentPredictPhenotype + tr(": 预测完成！");
+        }
+        QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
+    });
+    predictProcess->start(exePath, args);
 }
 
 void MainWindow::showPredictSummary()
@@ -465,6 +473,7 @@ void MainWindow::showPredictSummary()
     msgBox.setText(msg);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
+    // 恢复按钮文本和可用状态
     ui->pushButton_4->setText(tr("开始预测"));
     ui->pushButton_4->setEnabled(true);
     ui->pushButton_download_pred->setEnabled(true);

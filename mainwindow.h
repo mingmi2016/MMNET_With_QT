@@ -11,6 +11,7 @@
 #include <QButtonGroup>
 #include <QRadioButton>
 #include <QCheckBox>
+#include <QProcess>
 #include "savedsettingdialog.h"
 
 QT_BEGIN_NAMESPACE
@@ -98,5 +99,9 @@ private:
     QList<QString> predictResultMsgs; // 预测结果信息
     void predictNextPhenotype(); // 预测下一个表型
     void showPredictSummary(); // 预测全部完成后弹框
+
+    // --- 新增：异步预测相关 ---
+    QProcess *predictProcess = nullptr;
+    QString currentPredictPhenotype;
 };
 #endif // MAINWINDOW_H
