@@ -14,6 +14,8 @@
 #include <QProcess>
 #include "savedsettingdialog.h"
 
+#define IS_DEVELOP_MODE 1 // 1为开发模式，0为正式模式
+
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -27,7 +29,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    MainWindow(QWidget *parent = nullptr, bool isDevelopMode = true);
     ~MainWindow();
     void changeProgress(int value); // 参考示例：用于更新进度条
 
@@ -103,5 +105,7 @@ private:
     // --- 新增：异步预测相关 ---
     QProcess *predictProcess = nullptr;
     QString currentPredictPhenotype;
+
+    bool isDevelopMode;
 };
 #endif // MAINWINDOW_H

@@ -19,6 +19,9 @@
 #include <QVBoxLayout>
 #include <QThread>
 #include "savedsettingdialog.h"
+#if defined(Q_OS_WIN)
+#include <windows.h>
+#endif
 
 // 统计目录大小递归函数
 static double dirSizeMB(const QString &path) {
@@ -36,12 +39,14 @@ static double dirSizeMB(const QString &path) {
     return size / (1024.0 * 1024.0);
 }
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(QWidget *parent, bool isDevelop)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , isDevelopMode(isDevelop)
 {
     qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
+    setWindowTitle("MMNET");
     connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleRunModelClicked);
     qDebug() << "[MainWindow] connect pushButton_3 -> handleRunModelClicked";
     
@@ -106,6 +111,11 @@ void MainWindow::handleRunModelClicked()
 void MainWindow::showNextSettingDialog()
 {
     if (pendingPhenotypes.isEmpty()) {
+        // 优化：如果没有任何表型被设置（全部被取消），不进入训练
+        if (phenotypeSettings.isEmpty()) {
+            ui->pushButton_3->setEnabled(true);
+            return;
+        }
         // 全部设置完毕，开始训练
         startTrainingForPhenotypes();
         return;
@@ -447,6 +457,13 @@ void MainWindow::predictNextPhenotype()
     }
     predictProcess = new QProcess(this);
     predictProcess->setWorkingDirectory(QDir::currentPath() + "/MMNET");
+#if defined(Q_OS_WIN)
+    if (!isDevelopMode) {
+        predictProcess->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
+            args->flags |= CREATE_NO_WINDOW;
+        });
+    }
+#endif
     QStringList args;
     args << "--phenotype" << currentPredictPhenotype;
     connect(predictProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
