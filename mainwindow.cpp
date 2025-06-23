@@ -14,6 +14,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QRegularExpression>
+#include <QChar>
 #include "worker.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -60,6 +61,26 @@ MainWindow::MainWindow(QWidget *parent, bool isDevelop)
 
     // 启动时刷新多选框
     refreshPhenotypeOptions();
+    
+    // 检查当前目录是否包含中文字符
+    QString currentPath = QDir::currentPath();
+    if (containsChineseCharacters(currentPath)) {
+        QString warningMsg = tr("警告：当前项目目录包含中文字符！\n\n")
+                           + tr("当前目录：") + currentPath + "\n\n"
+                           + tr("包含中文字符的路径可能会导致模型训练和预测失败。\n")
+                           + tr("建议将项目移动到纯英文路径，例如：\n")
+                           + tr("C:\\Projects\\MMNET\n")
+                           + tr("D:\\Work\\MMNET\n")
+                           + tr("等。");
+        
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(500, 300);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setWindowTitle(tr("路径警告"));
+        msgBox.setText(warningMsg);
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+    }
 }
 
 MainWindow::~MainWindow()
@@ -238,6 +259,9 @@ void MainWindow::startTrainingForPhenotypes()
         mmnetFile.write(newDoc.toJson(QJsonDocument::Indented));
         mmnetFile.close();
     }
+    // 新增：确保保存模型的目录存在
+    QDir().mkpath(QDir::currentPath() + "/MMNET/saved");
+
     // 4. 初始化训练队列和结果，开始逐个训练
     trainPhenoQueue.clear();
     trainResultMsgs.clear();
@@ -253,6 +277,30 @@ void MainWindow::trainNextPhenotype()
         showTrainSummary();
         return;
     }
+    
+    // 检查当前目录是否包含中文字符
+    QString currentPath = QDir::currentPath();
+    if (containsChineseCharacters(currentPath)) {
+        QString errorMsg = tr("错误：当前项目目录包含中文字符，这会导致模型训练失败！\n\n")
+                          + tr("当前目录：") + currentPath + "\n\n"
+                          + tr("请将项目移动到不包含中文字符的目录中，例如：\n")
+                          + tr("C:\\Projects\\MMNET\n")
+                          + tr("D:\\Work\\MMNET\n")
+                          + tr("等纯英文路径。");
+        
+        MyMessageBox msgBox(this);
+        msgBox.setMySize(500, 300);
+        msgBox.setIcon(QMessageBox::Critical);
+        msgBox.setWindowTitle(tr("路径错误"));
+        msgBox.setText(errorMsg);
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.exec();
+        
+        // 恢复按钮状态
+        ui->pushButton_3->setEnabled(true);
+        return;
+    }
+    
     const QString phenotype = trainPhenoQueue.takeFirst();
     ui->progressBar_step2->setFormat(tr("训练进度（%1）：%p%").arg(phenotype));
     // 训练流程（原for循环剩余部分）
@@ -316,8 +364,8 @@ void MainWindow::trainNextPhenotype()
         QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
     }
     // 训练完成后重命名mmnet.pt
-    QString ptFile = QDir::currentPath() + "/MMNET/mmnet.pt";
-    QString ptTarget = QDir::currentPath() + QString("/MMNET/%1_mmnet.pt").arg(phenotype);
+    QString ptFile = QDir::currentPath() + "/MMNET/saved/mmnet.pt";
+    QString ptTarget = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
     if (QFile::exists(ptFile)) {
         if (QFile::exists(ptTarget)) QFile::remove(ptTarget);
         QFile::rename(ptFile, ptTarget);
@@ -330,7 +378,7 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
                                const QDateTime &step2Start, const QDateTime &step2End) {
     qDebug() << "[MainWindow] step2Finished called, this=" << this << ", thread=" << QThread::currentThread();
     isStep2Running = false;
-    ui->pushButton_3->setEnabled(true); // 恢复按钮
+    // ui->pushButton_3->setEnabled(true); // 恢复按钮
     if (success) {
         ui->progressBar_step2->setValue(100);
     }
@@ -401,7 +449,7 @@ void MainWindow::showTrainSummary()
     msgBox.setText(msg);
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
-    QTimer::singleShot(0, this, [this](){ ui->pushButton_3->setEnabled(true); });
+    ui->pushButton_3->setEnabled(true);
 }
 
 void MainWindow::on_pushButton_4_clicked()
@@ -446,7 +494,7 @@ void MainWindow::predictNextPhenotype()
         return;
     }
     if (!QFile::exists(modelPath)) {
-        predictResultMsgs << currentPredictPhenotype + tr(": 找不到模型文件");
+        predictResultMsgs << currentPredictPhenotype + tr(": 找不到模型文件 (%1)").arg(modelPath);
         QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
         return;
     }
@@ -620,9 +668,22 @@ bool MainWindow::updateSavedValue(const QString &jsonPath, const QString &phenot
 
 // 文件上传功能实现
 void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) {
+    QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
+
+    // 新增：如果是上传基因文件，先清空目录
+    if (targetDir == "MMNET/data/gene") {
+        QDir dirToClear(fullTargetPath);
+        if (dirToClear.exists()) {
+            dirToClear.setFilter(QDir::Files | QDir::NoDotAndDotDot);
+            const QFileInfoList fileList = dirToClear.entryInfoList();
+            for (const QFileInfo &file : fileList) {
+                QFile::remove(file.absoluteFilePath());
+            }
+        }
+    }
+    
     // 创建目标目录（如果不存在）
     QDir dir;
-    QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
     if (!dir.exists(fullTargetPath)) {
         if (!dir.mkpath(fullTargetPath)) {
             MyMessageBox msgBox(this);
@@ -659,6 +720,7 @@ void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) 
         QString targetFilePath = fullTargetPath + "/" + fileInfo.fileName();
         // 如果目标文件已存在，询问是否覆盖
         if (QFile::exists(targetFilePath)) {
+            // 由于基因文件上传前已清空目录，此处的覆盖确认将不会触发
             QMessageBox::StandardButton reply = QMessageBox::question(
                 this,
                 tr("文件已存在"),
@@ -748,6 +810,48 @@ int MainWindow::parseEpochFromLog(const QString &logPath) {
         }
     }
     return lastEpoch;
+}
+
+bool MainWindow::containsChineseCharacters(const QString &path) {
+    // 检查字符串是否包含中文字符
+    // 中文字符的Unicode范围：0x4E00-0x9FFF (基本汉字)
+    // 以及一些扩展的中文字符范围
+    for (const QChar &ch : path) {
+        ushort unicode = ch.unicode();
+        // 基本汉字范围
+        if (unicode >= 0x4E00 && unicode <= 0x9FFF) {
+            return true;
+        }
+        // 扩展汉字范围A
+        if (unicode >= 0x3400 && unicode <= 0x4DBF) {
+            return true;
+        }
+        // 扩展汉字范围B
+        if (unicode >= 0x20000 && unicode <= 0x2A6DF) {
+            return true;
+        }
+        // 扩展汉字范围C
+        if (unicode >= 0x2A700 && unicode <= 0x2B73F) {
+            return true;
+        }
+        // 扩展汉字范围D
+        if (unicode >= 0x2B740 && unicode <= 0x2B81F) {
+            return true;
+        }
+        // 扩展汉字范围E
+        if (unicode >= 0x2B820 && unicode <= 0x2CEAF) {
+            return true;
+        }
+        // 扩展汉字范围F
+        if (unicode >= 0x2CEB0 && unicode <= 0x2EBEF) {
+            return true;
+        }
+        // 扩展汉字范围G
+        if (unicode >= 0x30000 && unicode <= 0x3134F) {
+            return true;
+        }
+    }
+    return false;
 }
 
 

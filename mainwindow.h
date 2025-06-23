@@ -67,6 +67,9 @@ private:
     // 文件上传相关方法
     void uploadFiles(const QString &targetDir, const QString &fileType);
     bool isValidFileFormat(const QString &fileName);
+    
+    // 检查路径是否包含中文
+    bool containsChineseCharacters(const QString &path);
 
     // phenotype多选相关
     QList<QCheckBox*> phenotypeCheckBoxes;
