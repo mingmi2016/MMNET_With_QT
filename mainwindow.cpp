@@ -48,8 +48,8 @@ MainWindow::MainWindow(QWidget *parent, bool isDevelop)
     qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
     setWindowTitle("MMNET");
-    connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleRunModelClicked);
-    qDebug() << "[MainWindow] connect pushButton_3 -> handleRunModelClicked";
+    connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleTrainModelClicked);
+    qDebug() << "[MainWindow] connect pushButton_3 -> handleTrainModelClicked";
     
     // 初始化进度监控定时器
     progressTimer = new QTimer(this);
@@ -111,11 +111,11 @@ void MainWindow::on_pushButton_5_clicked()
     uploadFiles("MMNET/data/pred", "待预测");
 }
 
-// 第二步训练模型
-void MainWindow::handleRunModelClicked()
+// Train Model (原handleRunModelClicked)
+void MainWindow::handleTrainModelClicked()
 {
     if (isStep2Running) {
-        qDebug() << "[MainWindow] handleRunModelClicked: already running, ignore.";
+        qDebug() << "[MainWindow] handleTrainModelClicked: already running, ignore.";
         return;
     }
     if (selectedPhenotypes.isEmpty()) {
@@ -801,9 +801,9 @@ int MainWindow::parseEpochFromLog(const QString &logPath) {
     }
     int lastEpoch = -1;
     QTextStream in(&f);
+    QRegularExpression re("epoch = (\\d+)[, ]"); // 支持逗号或空格结尾
     while (!in.atEnd()) {
         QString line = in.readLine();
-        QRegularExpression re("epoch = (\\d+)");
         auto match = re.match(line);
         if (match.hasMatch()) {
             lastEpoch = match.captured(1).toInt();
@@ -852,6 +852,292 @@ bool MainWindow::containsChineseCharacters(const QString &path) {
         }
     }
     return false;
+}
+
+// Load Model 按钮
+void MainWindow::on_pushButton_load_model_clicked()
+{
+    QStringList fileNames = QFileDialog::getOpenFileNames(this, tr("选择模型文件"), QDir::homePath(), tr("PyTorch模型 (*.pt);;所有文件 (*.*)"));
+    if (fileNames.isEmpty()) return;
+    
+    QString targetDir = QDir::currentPath() + "/MMNET/saved";
+    QDir().mkpath(targetDir);
+    
+    QStringList successFiles, failedFiles;
+    for (const QString &fileName : fileNames) {
+        QFileInfo fileInfo(fileName);
+        if (fileInfo.suffix().toLower() != "pt") {
+            failedFiles << fileInfo.fileName() + tr(" (不是.pt文件)");
+            continue;
+        }
+        
+        QString targetFile = targetDir + "/" + fileInfo.fileName();
+        if (QFile::exists(targetFile)) QFile::remove(targetFile);
+        
+        if (QFile::copy(fileName, targetFile)) {
+            successFiles << fileInfo.fileName();
+        } else {
+            failedFiles << fileInfo.fileName() + tr(" (复制失败)");
+        }
+    }
+    
+    // 显示结果
+    QString resultMsg;
+    if (!successFiles.isEmpty()) {
+        resultMsg += tr("成功上传 %1 个模型文件：\n").arg(successFiles.size());
+        resultMsg += successFiles.join("\n") + "\n\n";
+    }
+    if (!failedFiles.isEmpty()) {
+        resultMsg += tr("失败 %1 个文件：\n").arg(failedFiles.size());
+        resultMsg += failedFiles.join("\n");
+    }
+    
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(400, 200);
+    msgBox.setIcon(failedFiles.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setWindowTitle(tr("模型上传结果"));
+    msgBox.setText(resultMsg);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+}
+
+// Transfer Learning 按钮
+void MainWindow::on_pushButton_transfer_learning_clicked()
+{
+    if (isStep2Running) {
+        qDebug() << "[MainWindow] TransferLearning: already running, ignore.";
+        return;
+    }
+    if (selectedPhenotypes.isEmpty()) {
+        QMessageBox::warning(this, tr("错误"), tr("请先选择一个或多个表型文件！"));
+        return;
+    }
+    ui->pushButton_transfer_learning->setEnabled(false);
+    // 只设置MMNet.json参数
+    pendingPhenotypes = selectedPhenotypes;
+    phenotypeSettings.clear();
+    showNextTransferLearningDialog();
+}
+
+// Transfer Learning 参数弹窗（只MMNet）
+void MainWindow::showNextTransferLearningDialog()
+{
+    if (pendingPhenotypes.isEmpty()) {
+        if (phenotypeSettings.isEmpty()) {
+            ui->pushButton_transfer_learning->setEnabled(true);
+            return;
+        }
+        startTransferLearningForPhenotypes();
+        return;
+    }
+    QString phenotype = pendingPhenotypes.takeFirst();
+    // 新增：先判断预训练模型是否存在
+    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+    if (!QFile::exists(modelPath)) {
+        QMessageBox::warning(this, tr("错误"), phenotype + tr(": 未找到预训练模型文件：") + modelPath);
+        QTimer::singleShot(0, this, &MainWindow::showNextTransferLearningDialog);
+        return;
+    }
+    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QFile mmnetFile(mmnetJson);
+    int mmnetBatch = 128, mmnetSaved = 100;
+    double mmnetP1 = 0.8, mmnetP2 = 0.8, mmnetP3 = 0.8, mmnetP4 = 0.6, mmnetWd = 1e-5;
+    if (mmnetFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
+        QJsonObject obj = doc.object();
+        if (obj.contains(phenotype) && obj[phenotype].isObject()) {
+            QJsonObject phenoObj = obj[phenotype].toObject();
+            if (phenoObj.contains("batch size")) mmnetBatch = phenoObj["batch size"].toInt();
+            if (phenoObj.contains("p1")) mmnetP1 = phenoObj["p1"].toDouble();
+            if (phenoObj.contains("p2")) mmnetP2 = phenoObj["p2"].toDouble();
+            if (phenoObj.contains("p3")) mmnetP3 = phenoObj["p3"].toDouble();
+            if (phenoObj.contains("p4")) mmnetP4 = phenoObj["p4"].toDouble();
+            if (phenoObj.contains("saved")) mmnetSaved = phenoObj["saved"].toInt();
+            if (phenoObj.contains("wd")) mmnetWd = phenoObj["wd"].toDouble();
+        }
+        mmnetFile.close();
+    }
+    SavedSettingDialog *dlg = new SavedSettingDialog(this);
+    dlg->setPhenotype(phenotype);
+    dlg->setEsnValues(0, 0, 0); // 不显示ESN参数
+    dlg->setMmnetValues(mmnetBatch, mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetSaved, mmnetWd);
+    // 隐藏ESN参数区
+    auto esnGroup = dlg->findChild<QGroupBox*>(QString(), Qt::FindDirectChildrenOnly);
+    if (esnGroup) esnGroup->hide();
+    connect(dlg, &QDialog::accepted, this, [this, phenotype, dlg, &mmnetBatch, &mmnetP1, &mmnetP2, &mmnetP3, &mmnetP4, &mmnetSaved, &mmnetWd]() {
+        dlg->getMmnetValues(mmnetBatch, mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetSaved, mmnetWd);
+        PhenotypeSetting setting;
+        setting.mmnetBatch = mmnetBatch;
+        setting.mmnetP1 = mmnetP1;
+        setting.mmnetP2 = mmnetP2;
+        setting.mmnetP3 = mmnetP3;
+        setting.mmnetP4 = mmnetP4;
+        setting.mmnetSaved = mmnetSaved;
+        setting.mmnetWd = mmnetWd;
+        phenotypeSettings[phenotype] = setting;
+        dlg->deleteLater();
+        showNextTransferLearningDialog();
+    });
+    connect(dlg, &QDialog::rejected, this, [dlg, this]() {
+        dlg->deleteLater();
+        showNextTransferLearningDialog();
+    });
+    dlg->open();
+}
+
+// Transfer Learning 执行
+void MainWindow::startTransferLearningForPhenotypes()
+{
+    if (phenotypeSettings.isEmpty()) {
+        ui->pushButton_transfer_learning->setEnabled(true);
+        ui->progressBar_step2->setVisible(false);
+        return;
+    }
+    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QFile mmnetFile(mmnetJson);
+    QJsonObject mmnetObj;
+    if (mmnetFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(mmnetFile.readAll());
+        mmnetObj = doc.object();
+        mmnetFile.close();
+    }
+    ui->progressBar_step2->setVisible(true);
+    ui->progressBar_step2->setFormat(tr("迁移学习进度：%p%"));
+    ui->progressBar_step2->setValue(0);
+    ui->progressBar_step2->repaint();
+    QApplication::processEvents();
+    QStringList queue = phenotypeSettings.keys();
+    QList<QString> resultMsgs;
+    int totalPhenotypes = queue.size();
+    int currentPhenotype = 0;
+    QElapsedTimer totalTimer;
+    totalTimer.start();
+    for (const QString &phenotype : queue) {
+        currentPhenotype++;
+        const PhenotypeSetting &setting = phenotypeSettings[phenotype];
+        ui->progressBar_step2->setFormat(tr("迁移学习进度（%1）：%p%").arg(phenotype));
+        ui->progressBar_step2->setValue((currentPhenotype - 1) * 100 / totalPhenotypes);
+        ui->progressBar_step2->repaint();
+        QApplication::processEvents();
+        QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+        if (!QFile::exists(modelPath)) {
+            resultMsgs << phenotype + tr(": 未找到预训练模型文件：") + modelPath;
+            continue;
+        }
+        QString exePath = QDir::currentPath() + "/MMNET/transferLearning.exe";
+        QString logPath = QDir::currentPath() + "/MMNET/step3.log";
+        QString jsonPath = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+        if (!QFile::exists(exePath)) {
+            resultMsgs << phenotype + tr(": 找不到 transferLearning.exe");
+            continue;
+        }
+        QFile step3Log(logPath);
+        if (step3Log.exists()) step3Log.remove();
+        if (!step3Log.open(QIODevice::WriteOnly)) {
+            resultMsgs << phenotype + tr(": 无法创建 step3.log 文件");
+            continue;
+        }
+        step3Log.close();
+        // 实时进度监控
+        currentLogPath = logPath;
+        currentTotalEpoch = setting.mmnetSaved;
+        lastParsedEpoch = -1;
+        startProgressMonitoring(logPath, setting.mmnetSaved);
+        QElapsedTimer timer;
+        timer.start();
+        QProcess proc;
+        QStringList args;
+        args << "--phenotype" << phenotype;
+        proc.setWorkingDirectory(QDir::currentPath() + "/MMNET");
+#if defined(Q_OS_WIN)
+        if (!isDevelopMode) {
+            proc.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
+                args->flags |= CREATE_NO_WINDOW;
+            });
+        }
+#endif
+        proc.start(exePath, args);
+        // 让主线程处理事件，保证进度条实时刷新
+        while (proc.state() != QProcess::NotRunning) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+        }
+        if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
+            resultMsgs << phenotype + tr(": transferLearning.exe 运行失败");
+        } else {
+            // 解析step3.log最后一行的决定系数
+            QString lastLine;
+            QFile step3Log(logPath);
+            if (step3Log.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&step3Log);
+                while (!in.atEnd()) {
+                    QString line = in.readLine();
+                    if (!line.trimmed().isEmpty()) lastLine = line;
+                }
+                step3Log.close();
+            }
+            QString trainR2, valR2;
+            QRegularExpression reTrain("train_R2\\s*=\\s*([\\d\\.\\-eE]+)");
+            QRegularExpression reVal("val_R2\\s*=\\s*([\\d\\.\\-eE]+)");
+            auto mTrain = reTrain.match(lastLine);
+            auto mVal = reVal.match(lastLine);
+            if (mTrain.hasMatch()) trainR2 = mTrain.captured(1);
+            if (mVal.hasMatch()) valR2 = mVal.captured(1);
+            QString r2Msg;
+            if (!trainR2.isEmpty() && !valR2.isEmpty()) {
+                r2Msg = QString(" (R²: 训练集 %1，验证集 %2)").arg(trainR2).arg(valR2);
+            } else {
+                r2Msg = tr(" (R²: 未能解析到train_R2/val_R2)");
+            }
+            double seconds = timer.elapsed() / 1000.0;
+            QString timeMsg;
+            if (seconds >= 60.0) {
+                double minutes = seconds / 60.0;
+                timeMsg = QString("\n本次迁移学习耗时：%1").arg(QString::number(minutes, 'f', 2) + " 分钟");
+            } else {
+                timeMsg = QString("\n本次迁移学习耗时：%1 秒").arg(seconds, 0, 'f', 2);
+            }
+            resultMsgs << phenotype + tr(": 迁移学习完成！") + r2Msg + timeMsg;
+        }
+        // 结束进度监控
+        stopProgressMonitoring();
+        ui->progressBar_step2->setValue(currentPhenotype * 100 / totalPhenotypes);
+        ui->progressBar_step2->repaint();
+        QApplication::processEvents();
+    }
+    ui->progressBar_step2->setValue(100);
+    ui->progressBar_step2->setFormat(tr("迁移学习进度：%p%"));
+    double totalSeconds = totalTimer.elapsed() / 1000.0;
+    QString totalTimeMsg;
+    if (totalSeconds >= 60.0) {
+        double minutes = totalSeconds / 60.0;
+        totalTimeMsg = QString("总耗时：%1 分钟").arg(QString::number(minutes, 'f', 2));
+    } else {
+        totalTimeMsg = QString("总耗时：%1 秒").arg(totalSeconds, 0, 'f', 2);
+    }
+    QString msg = tr("所有表型迁移学习已完成！\n\n");
+    for (const QString &line : resultMsgs) {
+        msg += line + "\n";
+    }
+    msg += "\n" + totalTimeMsg;
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(500, 300);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("迁移学习完成"));
+    msgBox.setText(msg);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+    ui->pushButton_transfer_learning->setEnabled(true);
+}
+
+void MainWindow::startProgressMonitoring(const QString &logPath, int totalEpoch) {
+    currentLogPath = logPath;
+    currentTotalEpoch = totalEpoch;
+    lastParsedEpoch = -1;
+    if (progressTimer) progressTimer->start(500); // 500ms刷新
+}
+
+void MainWindow::stopProgressMonitoring() {
+    if (progressTimer) progressTimer->stop();
 }
 
 

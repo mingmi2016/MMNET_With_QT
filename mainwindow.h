@@ -37,7 +37,10 @@ private slots:
     void on_pushButton_clicked();    // 上传基因文件
     void on_pushButton_2_clicked();  // 上传表型文件
     void on_pushButton_5_clicked();  // 上传待预测文件
-    void handleRunModelClicked();
+    void handleTrainModelClicked();  // Train Model
+    void on_pushButton_load_model_clicked(); // Load Model
+    void on_pushButton_transfer_learning_clicked(); // Transfer Learning
+    void showNextTransferLearningDialog(); // Transfer Learning参数弹窗
     void on_pushButton_4_clicked();
     void on_pushButton_download_pred_clicked();
     void updateStep2Progress(int percent);
@@ -85,10 +88,10 @@ private:
     // --- 新增：多表型参数弹窗重构相关 ---
     QStringList pendingPhenotypes; // 待处理的表型队列
     struct PhenotypeSetting {
-        int esnBatch, esnSaved;
-        double esnP;
-        int mmnetBatch, mmnetSaved;
-        double mmnetP1, mmnetP2, mmnetP3, mmnetP4, mmnetWd;
+        int esnBatch = 0, esnSaved = 0;
+        double esnP = 0.0;
+        int mmnetBatch = 0, mmnetSaved = 0;
+        double mmnetP1 = 0.0, mmnetP2 = 0.0, mmnetP3 = 0.0, mmnetP4 = 0.0, mmnetWd = 0.0;
     };
     QMap<QString, PhenotypeSetting> phenotypeSettings; // 每个表型的参数
     void showNextSettingDialog(); // 弹出下一个参数设置对话框
@@ -110,5 +113,7 @@ private:
     QString currentPredictPhenotype;
 
     bool isDevelopMode;
+
+    void startTransferLearningForPhenotypes(); // Transfer Learning helper
 };
 #endif // MAINWINDOW_H

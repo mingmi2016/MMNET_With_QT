@@ -96,7 +96,7 @@
          <item>
           <widget class="QPushButton" name="pushButton_3">
            <property name="text">
-            <string>Run Model</string>
+            <string>Train Model</string>
            </property>
            <property name="minimumSize">
             <size>
@@ -106,6 +106,38 @@
            </property>
            <property name="styleSheet">
             <string>QPushButton{background-color:#43b97f;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#2e8b57;}</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_load_model">
+           <property name="text">
+            <string>Load Model</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>160</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string>QPushButton{background-color:#f7b32b;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#e09e1b;}</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_transfer_learning">
+           <property name="text">
+            <string>Transfer Learning</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>160</width>
+             <height>40</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string>QPushButton{background-color:#4f8cff;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#357ae8;}</string>
            </property>
           </widget>
          </item>
