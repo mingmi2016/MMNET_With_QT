@@ -31,7 +31,7 @@
     <item>
      <widget class="QGroupBox" name="groupBox_step1">
       <property name="title">
-       <string>第一步：上传文件</string>
+       <string>Step 1: Upload Files</string>
       </property>
       <layout class="QHBoxLayout" name="hLayout1">
        <item>
@@ -46,7 +46,7 @@
           <string>QPushButton{background-color:#4f8cff;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#357ae8;}</string>
          </property>
          <property name="text">
-          <string>上传基因文件</string>
+          <string>Upload Gene File</string>
          </property>
         </widget>
        </item>
@@ -62,7 +62,7 @@
           <string>QPushButton{background-color:#4f8cff;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#357ae8;}</string>
          </property>
          <property name="text">
-          <string>上传表型文件</string>
+          <string>Upload Phenotype File</string>
          </property>
         </widget>
        </item>
@@ -78,7 +78,7 @@
           <string>QPushButton{background-color:#f7b32b;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#e09e1b;}</string>
          </property>
          <property name="text">
-          <string>上传待预测文件</string>
+          <string>Upload Prediction File</string>
          </property>
         </widget>
        </item>
@@ -88,7 +88,7 @@
     <item>
      <widget class="QGroupBox" name="groupBox_step2">
       <property name="title">
-       <string>第二步：运行MMNET</string>
+       <string>Step 2: Run MMNET</string>
       </property>
       <layout class="QVBoxLayout" name="vLayout2">
        <item>
@@ -158,7 +158,7 @@
           <bool>true</bool>
          </property>
          <property name="format">
-          <string>训练进度：%p%</string>
+          <string>Progress: %p%</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
@@ -185,7 +185,7 @@ QProgressBar::chunk {
     <item>
      <widget class="QGroupBox" name="groupBox_step3">
       <property name="title">
-       <string>第三步：预测</string>
+       <string>Step 3: Prediction</string>
       </property>
       <layout class="QVBoxLayout" name="vLayout3">
        <item>
@@ -202,7 +202,7 @@ QProgressBar::chunk {
             <string>QPushButton{background-color:#f7b32b;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#e09e1b;}</string>
            </property>
            <property name="text">
-            <string>开始预测</string>
+            <string>Start Prediction</string>
            </property>
           </widget>
          </item>
@@ -220,7 +220,7 @@ QPushButton:hover{background-color:#2e8b57;}
 QPushButton:disabled{background-color:#cccccc;color:#888888;border:1px solid #bbbbbb;}</string>
            </property>
            <property name="text">
-            <string>下载结果文件</string>
+            <string>Download Results</string>
            </property>
           </widget>
          </item>

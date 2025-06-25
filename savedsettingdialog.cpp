@@ -9,7 +9,7 @@
 #include <QFormLayout>
 #include <QAbstractSpinBox>
 SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(tr("设置模型参数"));
+    setWindowTitle(tr("Set Model Parameters"));
     labelTitle = new QLabel(this);
     // ESN
     spinEsnBatch = new QSpinBox(this);
@@ -63,28 +63,28 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->addWidget(labelTitle);
     // ESN部分
-    QGroupBox *esnGroup = new QGroupBox(tr("ESN参数"), this);
+    QGroupBox *esnGroup = new QGroupBox(tr("ESN Parameters"), this);
     QFormLayout *esnLayout = new QFormLayout();
-    esnLayout->addRow(tr("batch size:"), spinEsnBatch);
+    esnLayout->addRow(tr("Batch Size:"), spinEsnBatch);
     esnLayout->addRow(tr("p:"), spinEsnP);
-    esnLayout->addRow(tr("saved (epoch):"), spinEsnSaved);
+    esnLayout->addRow(tr("Saved (Epochs):"), spinEsnSaved);
     esnGroup->setLayout(esnLayout);
     mainLayout->addWidget(esnGroup);
     // MMNet部分
-    QGroupBox *mmnetGroup = new QGroupBox(tr("MMNet参数"), this);
+    QGroupBox *mmnetGroup = new QGroupBox(tr("MMNet Parameters"), this);
     QFormLayout *mmnetLayout = new QFormLayout();
-    mmnetLayout->addRow(tr("batch size:"), spinMmnetBatch);
+    mmnetLayout->addRow(tr("Batch Size:"), spinMmnetBatch);
     mmnetLayout->addRow(tr("p1:"), spinMmnetP1);
     mmnetLayout->addRow(tr("p2:"), spinMmnetP2);
     mmnetLayout->addRow(tr("p3:"), spinMmnetP3);
     mmnetLayout->addRow(tr("p4:"), spinMmnetP4);
-    mmnetLayout->addRow(tr("saved (epoch):"), spinMmnetSaved);
-    mmnetLayout->addRow(tr("wd:"), spinMmnetWd);
+    mmnetLayout->addRow(tr("Saved (Epochs):"), spinMmnetSaved);
+    mmnetLayout->addRow(tr("Weight Decay (wd):"), spinMmnetWd);
     mmnetGroup->setLayout(mmnetLayout);
     mainLayout->addWidget(mmnetGroup);
     // 按钮
-    btnOk = new QPushButton(tr("确定"), this);
-    btnCancel = new QPushButton(tr("取消"), this);
+    btnOk = new QPushButton(tr("OK"), this);
+    btnCancel = new QPushButton(tr("Cancel"), this);
     QHBoxLayout *btnRow = new QHBoxLayout();
     btnRow->addStretch();
     btnRow->addWidget(btnOk);
@@ -95,7 +95,7 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     connect(btnCancel, &QPushButton::clicked, this, &SavedSettingDialog::reject);
 }
 void SavedSettingDialog::setPhenotype(const QString &pheno) {
-    labelTitle->setText(tr("表型: ") + pheno);
+    labelTitle->setText(tr("Phenotype: ") + pheno);
 }
 void SavedSettingDialog::setEsnValues(int batchSize, double p, int saved) {
     spinEsnBatch->setValue(batchSize);
