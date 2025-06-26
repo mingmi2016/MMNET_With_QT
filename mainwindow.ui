@@ -21,7 +21,7 @@
        <string>font-size:28px; font-weight:bold; color:#2d415a; margin:20px 0 30px 0;</string>
       </property>
       <property name="text">
-       <string>MMNET</string>
+       <string>MENET</string>
       </property>
       <property name="alignment">
        <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -88,7 +88,7 @@
     <item>
      <widget class="QGroupBox" name="groupBox_step2">
       <property name="title">
-       <string>Step 2: Run MMNET</string>
+       <string>Step 2: Run MENET</string>
       </property>
       <layout class="QVBoxLayout" name="vLayout2">
        <item>

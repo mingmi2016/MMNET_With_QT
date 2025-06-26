@@ -25,7 +25,7 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     spinEsnSaved->setRange(1, 10000);
     spinEsnSaved->setButtonSymbols(QAbstractSpinBox::NoButtons);
     spinEsnSaved->setKeyboardTracking(true);
-    // MMNet
+    // MENet
     spinMmnetBatch = new QSpinBox(this);
     spinMmnetBatch->setRange(1, 100000);
     spinMmnetBatch->setButtonSymbols(QAbstractSpinBox::NoButtons);
@@ -70,8 +70,8 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     esnLayout->addRow(tr("Saved (Epochs):"), spinEsnSaved);
     esnGroup->setLayout(esnLayout);
     mainLayout->addWidget(esnGroup);
-    // MMNet部分
-    QGroupBox *mmnetGroup = new QGroupBox(tr("MMNet Parameters"), this);
+    // MENet部分
+    QGroupBox *mmnetGroup = new QGroupBox(tr("MENet Parameters"), this);
     QFormLayout *mmnetLayout = new QFormLayout();
     mmnetLayout->addRow(tr("Batch Size:"), spinMmnetBatch);
     mmnetLayout->addRow(tr("p1:"), spinMmnetP1);

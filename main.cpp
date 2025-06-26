@@ -65,8 +65,8 @@ int main(int argc, char *argv[])
         }
     }
     if (!isDevelopMode) {
-        QDir().mkpath(QDir::currentPath() + "/MMNET");
-        g_logFile = new QFile(QDir::currentPath() + "/MMNET/qt_app.log");
+        QDir().mkpath(QDir::currentPath() + "/MENET");
+        g_logFile = new QFile(QDir::currentPath() + "/MENET/qt_app.log");
         g_logFile->open(QIODevice::Append | QIODevice::Text);
         qInstallMessageHandler(myMessageHandler);
     }

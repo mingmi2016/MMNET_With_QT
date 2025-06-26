@@ -47,7 +47,7 @@ MainWindow::MainWindow(QWidget *parent, bool isDevelop)
 {
     qDebug() << "[MainWindow] Constructed, this=" << this << ", thread=" << QThread::currentThread();
     ui->setupUi(this);
-    setWindowTitle("MMNET");
+    setWindowTitle("MENET");
     connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleTrainModelClicked);
     qDebug() << "[MainWindow] connect pushButton_3 -> handleTrainModelClicked";
     
@@ -69,8 +69,8 @@ MainWindow::MainWindow(QWidget *parent, bool isDevelop)
                            + tr("Current directory:") + currentPath + "\n\n"
                            + tr("A path containing Chinese characters may cause model training and prediction to fail.")
                            + tr("It is recommended to move the project to a path with only English characters, e.g.:")
-                           + tr("C:\\Projects\\MMNET\n")
-                           + tr("D:\\Work\\MMNET\n")
+                           + tr("C:\\Projects\\MENET\n")
+                           + tr("D:\\Work\\MENET\n")
                            + tr("等。");
         
         MyMessageBox msgBox(this);
@@ -95,20 +95,20 @@ MainWindow::~MainWindow()
 // 上传基因文件
 void MainWindow::on_pushButton_clicked()
 {
-    uploadFiles("MMNET/data/gene", "gene");
+    uploadFiles("MENET/data/gene", "gene");
 }
 
 // 上传表型文件  
 void MainWindow::on_pushButton_2_clicked()
 {
-    uploadFiles("MMNET/data/phen", "phenotype");
+    uploadFiles("MENET/data/phen", "phenotype");
     refreshPhenotypeOptions();
 }
 
 // 上传待预测文件
 void MainWindow::on_pushButton_5_clicked()
 {
-    uploadFiles("MMNET/data/pred", "pred");
+    uploadFiles("MENET/data/pred", "pred");
 }
 
 // Train Model (原handleRunModelClicked)
@@ -143,8 +143,8 @@ void MainWindow::showNextSettingDialog()
     }
     QString phenotype = pendingPhenotypes.takeFirst();
         // 读取json参数
-        QString esnJson = QDir::currentPath() + "/MMNET/configs/ESN.json";
-        QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+        QString esnJson = QDir::currentPath() + "/MENET/configs/ESN.json";
+        QString mmnetJson = QDir::currentPath() + "/MENET/configs/MENet.json";
         QFile esnFile(esnJson);
         QFile mmnetFile(mmnetJson);
         int esnBatch = 128, esnSaved = 100;
@@ -212,8 +212,8 @@ void MainWindow::showNextSettingDialog()
 void MainWindow::startTrainingForPhenotypes()
 {
     // 1. 先整体读取ESN.json和MMNet.json
-    QString esnJson = QDir::currentPath() + "/MMNET/configs/ESN.json";
-    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QString esnJson = QDir::currentPath() + "/MENET/configs/ESN.json";
+    QString mmnetJson = QDir::currentPath() + "/MENET/configs/MENet.json";
     QFile esnFile(esnJson);
     QFile mmnetFile(mmnetJson);
     QJsonObject esnObj, mmnetObj;
@@ -260,7 +260,7 @@ void MainWindow::startTrainingForPhenotypes()
                 mmnetFile.close();
             }
     // 新增：确保保存模型的目录存在
-    QDir().mkpath(QDir::currentPath() + "/MMNET/saved");
+    QDir().mkpath(QDir::currentPath() + "/MENET/saved");
 
     // 4. 初始化训练队列和结果，开始逐个训练
     trainPhenoQueue.clear();
@@ -284,8 +284,8 @@ void MainWindow::trainNextPhenotype()
         QString errorMsg = tr("Error: The current project directory contains Chinese characters, which may cause model training to fail!\n\n")
                           + tr("Current directory:") + currentPath + "\n\n"
                           + tr("Please move the project to a directory without Chinese characters, e.g.:")
-                          + tr("C:\\Projects\\MMNET\n")
-                          + tr("D:\\Work\\MMNET\n")
+                          + tr("C:\\Projects\\MENET\n")
+                          + tr("D:\\Work\\MENET\n")
                           + tr("etc. pure English paths.");
         
         MyMessageBox msgBox(this);
@@ -313,8 +313,8 @@ void MainWindow::trainNextPhenotype()
         ui->progressBar_step2->repaint();
         QApplication::processEvents();
         // 创建空的日志文件
-        QFile step1Log(QDir::currentPath() + "/MMNET/step1.log");
-        QFile step2Log(QDir::currentPath() + "/MMNET/step2.log");
+        QFile step1Log(QDir::currentPath() + "/MENET/step1.log");
+        QFile step2Log(QDir::currentPath() + "/MENET/step2.log");
         if (step1Log.exists()) step1Log.remove();
         if (step2Log.exists()) step2Log.remove();
         if (!step1Log.open(QIODevice::WriteOnly)) {
@@ -330,15 +330,15 @@ void MainWindow::trainNextPhenotype()
         }
         step2Log.close();
         // 路径准备
-        QString exePath1 = QDir::currentPath() + "/MMNET/generate_genetic_relatedness.exe";
-        QString exePath2 = QDir::currentPath() + "/MMNET/train_mmnet.exe";
+        QString exePath1 = QDir::currentPath() + "/MENET/generate_genetic_relatedness.exe";
+        QString exePath2 = QDir::currentPath() + "/MENET/train_menet.exe";
         qDebug() << "Checking exe files:";
         qDebug() << "exePath1 exists:" << QFile::exists(exePath1) << ", path:" << exePath1;
         qDebug() << "exePath2 exists:" << QFile::exists(exePath2) << ", path:" << exePath2;
-        QString log1 = QDir::currentPath() + "/MMNET/step1.log";
-        QString log2 = QDir::currentPath() + "/MMNET/step2.log";
-        QString json1 = QDir::currentPath() + "/MMNET/configs/ESN.json";
-        QString json2 = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+        QString log1 = QDir::currentPath() + "/MENET/step1.log";
+        QString log2 = QDir::currentPath() + "/MENET/step2.log";
+        QString json1 = QDir::currentPath() + "/MENET/configs/ESN.json";
+        QString json2 = QDir::currentPath() + "/MENET/configs/MENet.json";
         if (workerThread) { 
             qDebug() << "[MainWindow] Deleting old workerThread, thread=" << workerThread;
             workerThread->quit(); 
@@ -363,9 +363,9 @@ void MainWindow::trainNextPhenotype()
         while (workerThread->isRunning()) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
         }
-        // 训练完成后重命名mmnet.pt
-    QString ptFile = QDir::currentPath() + "/MMNET/saved/mmnet.pt";
-    QString ptTarget = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+        // 训练完成后重命名menet.pt
+    QString ptFile = QDir::currentPath() + "/MENET/saved/menet.pt";
+    QString ptTarget = QDir::currentPath() + QString("/MENET/saved/%1_menet.pt").arg(phenotype);
         if (QFile::exists(ptFile)) {
             if (QFile::exists(ptTarget)) QFile::remove(ptTarget);
             QFile::rename(ptFile, ptTarget);
@@ -383,7 +383,7 @@ void MainWindow::step2Finished(bool success, const QString &msg, double seconds,
         ui->progressBar_step2->setValue(100);
     }
     // 解析step2.log最后一行的决定系数
-    QString step2LogPath = QDir::currentPath() + "/MMNET/step2.log";
+    QString step2LogPath = QDir::currentPath() + "/MENET/step2.log";
     QString lastLine;
     QFile step2Log(step2LogPath);
     if (step2Log.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -474,7 +474,7 @@ void MainWindow::predictNextPhenotype()
     }
     currentPredictPhenotype = predictPhenoQueue.takeFirst();
         // 检查是否有待预测文件
-        QString predDir = QDir::currentPath() + "/MMNET/data/pred";
+        QString predDir = QDir::currentPath() + "/MENET/data/pred";
         QDir dir(predDir);
         QStringList filters;
     filters << currentPredictPhenotype + ".csv" << currentPredictPhenotype + ".pt" << currentPredictPhenotype + ".xls" << currentPredictPhenotype + ".xlsx";
@@ -485,9 +485,9 @@ void MainWindow::predictNextPhenotype()
         return;
         }
         // 运行 pred.exe，指定模型和输出
-        QString exePath = QDir::currentPath() + "/MMNET/pred.exe";
-    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(currentPredictPhenotype);
-    QString outputPath = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(currentPredictPhenotype);
+        QString exePath = QDir::currentPath() + "/MENET/pred.exe";
+    QString modelPath = QDir::currentPath() + QString("/MENET/saved/%1_menet.pt").arg(currentPredictPhenotype);
+    QString outputPath = QDir::currentPath() + QString("/MENET/%1_MENet_pred.csv").arg(currentPredictPhenotype);
         if (!QFile::exists(exePath)) {
         predictResultMsgs << currentPredictPhenotype + tr(": Unable to find pred.exe");
         QTimer::singleShot(0, this, &MainWindow::predictNextPhenotype);
@@ -504,7 +504,7 @@ void MainWindow::predictNextPhenotype()
         predictProcess = nullptr;
     }
     predictProcess = new QProcess(this);
-    predictProcess->setWorkingDirectory(QDir::currentPath() + "/MMNET");
+    predictProcess->setWorkingDirectory(QDir::currentPath() + "/MENET");
 #if defined(Q_OS_WIN)
     if (!isDevelopMode) {
         predictProcess->setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
@@ -572,8 +572,8 @@ void MainWindow::refreshPhenotypeOptions() {
     }
     phenotypeCheckBoxes.clear();
     selectedPhenotypes.clear();
-    // 遍历MMNET/data/phen目录
-    QString phenDir = QDir::currentPath() + "/MMNET/data/phen";
+    // 遍历MENET/data/phen目录
+    QString phenDir = QDir::currentPath() + "/MENET/data/phen";
     QDir dir(phenDir);
     QStringList filters;
     filters << "*.csv" << "*.pt" << "*.xls" << "*.xlsx";
@@ -618,8 +618,8 @@ void MainWindow::on_pushButton_download_pred_clicked()
     if (dirPath.isEmpty()) return;
     QStringList successFiles, failedFiles;
     for (const QString &phenotype : selectedPhenotypes) {
-        QString srcFile = QDir::currentPath() + QString("/MMNET/%1_MMNet_pred.csv").arg(phenotype);
-        QString savePath = dirPath + QString("/%1_MMNet_pred.csv").arg(phenotype);
+        QString srcFile = QDir::currentPath() + QString("/MENET/%1_MENet_pred.csv").arg(phenotype);
+        QString savePath = dirPath + QString("/%1_MENet_pred.csv").arg(phenotype);
         if (!QFile::exists(srcFile)) {
             failedFiles << phenotype;
             continue;
@@ -671,7 +671,7 @@ void MainWindow::uploadFiles(const QString &targetDir, const QString &fileType) 
     QString fullTargetPath = QDir::currentPath() + "/" + targetDir;
 
     // 新增：如果是上传基因文件，先清空目录
-    if (targetDir == "MMNET/data/gene") {
+    if (targetDir == "MENET/data/gene") {
         QDir dirToClear(fullTargetPath);
         if (dirToClear.exists()) {
             dirToClear.setFilter(QDir::Files | QDir::NoDotAndDotDot);
@@ -860,7 +860,7 @@ void MainWindow::on_pushButton_load_model_clicked()
     QStringList fileNames = QFileDialog::getOpenFileNames(this, tr("Select Model File"), QDir::homePath(), tr("PyTorch model (*.pt);;All files (*.*)"));
     if (fileNames.isEmpty()) return;
     
-    QString targetDir = QDir::currentPath() + "/MMNET/saved";
+    QString targetDir = QDir::currentPath() + "/MENET/saved";
     QDir().mkpath(targetDir);
     
     QStringList successFiles, failedFiles;
@@ -932,13 +932,13 @@ void MainWindow::showNextTransferLearningDialog()
     }
     QString phenotype = pendingPhenotypes.takeFirst();
     // 新增：先判断预训练模型是否存在
-    QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+    QString modelPath = QDir::currentPath() + QString("/MENET/saved/%1_menet.pt").arg(phenotype);
     if (!QFile::exists(modelPath)) {
         QMessageBox::warning(this, tr("Error"), phenotype + tr(": Unable to find pre-trained model file:") + modelPath);
         QTimer::singleShot(0, this, &MainWindow::showNextTransferLearningDialog);
         return;
     }
-    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QString mmnetJson = QDir::currentPath() + "/MENET/configs/MENet.json";
     QFile mmnetFile(mmnetJson);
     int mmnetBatch = 128, mmnetSaved = 100;
     double mmnetP1 = 0.8, mmnetP2 = 0.8, mmnetP3 = 0.8, mmnetP4 = 0.6, mmnetWd = 1e-5;
@@ -993,7 +993,7 @@ void MainWindow::startTransferLearningForPhenotypes()
         ui->progressBar_step2->setVisible(false);
         return;
     }
-    QString mmnetJson = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+    QString mmnetJson = QDir::currentPath() + "/MENET/configs/MENet.json";
     QFile mmnetFile(mmnetJson);
     QJsonObject mmnetObj;
     if (mmnetFile.open(QIODevice::ReadOnly)) {
@@ -1019,14 +1019,14 @@ void MainWindow::startTransferLearningForPhenotypes()
         ui->progressBar_step2->setValue((currentPhenotype - 1) * 100 / totalPhenotypes);
         ui->progressBar_step2->repaint();
         QApplication::processEvents();
-        QString modelPath = QDir::currentPath() + QString("/MMNET/saved/%1_mmnet.pt").arg(phenotype);
+        QString modelPath = QDir::currentPath() + QString("/MENET/saved/%1_menet.pt").arg(phenotype);
         if (!QFile::exists(modelPath)) {
             resultMsgs << phenotype + tr(": Unable to find pre-trained model file:") + modelPath;
             continue;
         }
-        QString exePath = QDir::currentPath() + "/MMNET/transferLearning.exe";
-        QString logPath = QDir::currentPath() + "/MMNET/step3.log";
-        QString jsonPath = QDir::currentPath() + "/MMNET/configs/MMNet.json";
+        QString exePath = QDir::currentPath() + "/MENET/transferLearning.exe";
+        QString logPath = QDir::currentPath() + "/MENET/step3.log";
+        QString jsonPath = QDir::currentPath() + "/MENET/configs/MENet.json";
         if (!QFile::exists(exePath)) {
             resultMsgs << phenotype + tr(": Unable to find transferLearning.exe");
             continue;
@@ -1048,7 +1048,7 @@ void MainWindow::startTransferLearningForPhenotypes()
         QProcess proc;
         QStringList args;
         args << "--phenotype" << phenotype;
-        proc.setWorkingDirectory(QDir::currentPath() + "/MMNET");
+        proc.setWorkingDirectory(QDir::currentPath() + "/MENET");
 #if defined(Q_OS_WIN)
         if (!isDevelopMode) {
             proc.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
