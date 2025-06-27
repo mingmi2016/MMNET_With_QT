@@ -63,7 +63,7 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->addWidget(labelTitle);
     // ESN部分
-    QGroupBox *esnGroup = new QGroupBox(tr("ESN Parameters"), this);
+    QGroupBox *esnGroup = new QGroupBox(tr("RepGeno Parameters"), this);
     QFormLayout *esnLayout = new QFormLayout();
     esnLayout->addRow(tr("Batch Size:"), spinEsnBatch);
     esnLayout->addRow(tr("p:"), spinEsnP);
@@ -71,7 +71,7 @@ SavedSettingDialog::SavedSettingDialog(QWidget *parent) : QDialog(parent) {
     esnGroup->setLayout(esnLayout);
     mainLayout->addWidget(esnGroup);
     // MENet部分
-    QGroupBox *mmnetGroup = new QGroupBox(tr("MENet Parameters"), this);
+    QGroupBox *mmnetGroup = new QGroupBox(tr("MeNet Parameters"), this);
     QFormLayout *mmnetLayout = new QFormLayout();
     mmnetLayout->addRow(tr("Batch Size:"), spinMmnetBatch);
     mmnetLayout->addRow(tr("p1:"), spinMmnetP1);

@@ -50,6 +50,7 @@ private slots:
     void updatePredictStatus(const QString &msg);
     void updateProgressFromLog();
     void onPhenotypeSelected();
+    void testShowImage(); // 新增：测试显示图片的函数
 
 private:
     Ui::MainWindow *ui;

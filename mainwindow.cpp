@@ -51,6 +51,45 @@ MainWindow::MainWindow(QWidget *parent, bool isDevelop)
     connect(ui->pushButton_3, &QPushButton::clicked, this, &MainWindow::handleTrainModelClicked);
     qDebug() << "[MainWindow] connect pushButton_3 -> handleTrainModelClicked";
     
+    // 添加测试按钮 - 直接检查config.ini
+    QString configPath = QDir::currentPath() + "/config.ini";
+    QFile f(configPath);
+    bool isDevMode = false;
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!f.atEnd()) {
+            QString line = f.readLine().trimmed();
+            if (line.startsWith("DevelopMode", Qt::CaseInsensitive)) {
+                QString value = line.section('=', 1).trimmed().toLower();
+                isDevMode = (value == "true" || value == "1");
+                break;
+            }
+        }
+        f.close();
+    }
+    
+    if (isDevMode) {
+        // 创建测试按钮
+        QPushButton *testButton = new QPushButton("Test Image", this);
+        testButton->setMinimumSize(160, 40);
+        testButton->setStyleSheet("QPushButton{background-color:#4f8cff;color:white;font-size:16px;border-radius:8px;} QPushButton:hover{background-color:#357ae8;}");
+        
+        // 获取Step 1的布局并添加按钮
+        QGroupBox *step1Group = ui->groupBox_step1;
+        if (step1Group) {
+            QHBoxLayout *hLayout = qobject_cast<QHBoxLayout*>(step1Group->layout());
+            if (hLayout) {
+                hLayout->addWidget(testButton);
+                qDebug() << "[MainWindow] Added test image button to Step 1 layout";
+            } else {
+                qDebug() << "[MainWindow] Failed to get Step 1 horizontal layout";
+            }
+        } else {
+            qDebug() << "[MainWindow] Failed to find Step 1 group box";
+        }
+        
+        connect(testButton, &QPushButton::clicked, this, &MainWindow::testShowImage);
+    }
+    
     // 初始化进度监控定时器
     progressTimer = new QTimer(this);
     connect(progressTimer, &QTimer::timeout, this, &MainWindow::updateProgressFromLog);
@@ -443,10 +482,20 @@ void MainWindow::showTrainSummary()
         msg += phenotypeSettings.keys().at(i) + ":\n" + trainResultMsgs.at(i) + "\n\n";
     }
     MyMessageBox msgBox(this);
-    msgBox.setMySize(500, 300);
+    msgBox.setMySize(600, 800); // 增加高度以适应图片
     msgBox.setIcon(QMessageBox::Information);
     msgBox.setWindowTitle(tr("Training Completed"));
     msgBox.setText(msg);
+
+    // 检查是否有成功训练的表型，并显示其PCA曲线图
+    for (const QString &phenotype : phenotypeSettings.keys()) {
+        QString imagePath = QDir::currentPath() + QString("/MENET/%1_pca_curve.png").arg(phenotype);
+        if (QFile::exists(imagePath)) {
+            msgBox.setImage(imagePath);
+            break; // 只显示第一个找到的图片
+        }
+    }
+
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
     ui->pushButton_3->setEnabled(true);
@@ -1138,6 +1187,25 @@ void MainWindow::startProgressMonitoring(const QString &logPath, int totalEpoch)
 
 void MainWindow::stopProgressMonitoring() {
     if (progressTimer) progressTimer->stop();
+}
+
+// 新增：测试显示图片的函数
+void MainWindow::testShowImage()
+{
+    MyMessageBox msgBox(this);
+    msgBox.setMySize(600, 800);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("Test Image Display"));
+    msgBox.setText(tr("Testing image display functionality.\nBelow should show the PCA curve image:"));
+    
+    QString imagePath = QDir::currentPath() + "/MENET/culmlength_pca_curve.png";
+    qDebug() << "[MainWindow] Testing image display with path:" << imagePath;
+    qDebug() << "[MainWindow] Image file exists:" << QFileInfo(imagePath).exists();
+    
+    msgBox.setImage(imagePath);
+    
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
 }
 
 
