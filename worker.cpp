@@ -78,14 +78,14 @@ void Worker::run() {
         qDebug() << "[Worker] Step 1 completed successfully, proceeding to Step 2";
     }
     
-    // 第二步：train_mmnet.exe (50-100%)
+    // 第二步：train_menet.exe (50-100%)
     qDebug() << "[Worker] ===== Starting Step 2 =====";
     StepResult r2 = runStep(exePath2, logPath2, jsonPath2, phenotype, false);
     qDebug() << "[Worker] runStep2 finished, ok=" << r2.ok << ", seconds=" << r2.seconds;
     double totalSeconds = r1.seconds + r2.seconds;
     if (!r2.ok) { 
         qDebug() << "[Worker] Step 2 failed";
-        emit finished(false, "train_mmnet.exe 运行失败！", totalSeconds, r1.seconds, r2.seconds,
+        emit finished(false, "train_menet.exe 运行失败！", totalSeconds, r1.seconds, r2.seconds,
                      r1.startTime, r1.endTime, r2.startTime, r2.endTime); 
         return; 
     }
